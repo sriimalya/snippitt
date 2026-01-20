@@ -1,0 +1,1 @@
+export type ActiveTab = 'home' | 'explore' | 'library' | 'saved';

@@ -148,7 +148,7 @@ export const authOptions: NextAuthOptions = {
     
         // For new users, create account with generated username
         try {
-          await prisma.user.create({
+          const newUser = await prisma.user.create({
             data: {
               email: user.email as string,
               username: generateUsername(
@@ -164,7 +164,7 @@ export const authOptions: NextAuthOptions = {
           });
 
           // Set the user ID and emailVerified in the user object
-          user.id = user.id; // Use email as ID for Google users
+          user.id = newUser.id; // Use email as ID for Google users
           user.emailVerified = true; // Google emails are automatically verified
         } catch (error) {
           console.error("Google OAuth user creation failed:", error);

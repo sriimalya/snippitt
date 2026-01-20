@@ -77,7 +77,6 @@ model Post {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   category      Category
-  coverImage    String?
   description   String
   isDraft       Boolean           @default(false)
   tags          PostTag[]
@@ -145,7 +144,7 @@ model Image {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-
+  isCover     Boolean @default(false)
   @@index([postId])
 }
 
