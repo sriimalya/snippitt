@@ -279,7 +279,7 @@ export async function updatePost(input: UpdatePostInput): Promise<{
       })),
       user: {
         id: updatedPost.userId,
-        username: session.user.username || "", // Change 'name' to 'username'
+        username: session.user.username || "", 
       },
       tags: updatedPost.tags.map((t) => t.tag.name),
       _count: {
