@@ -130,7 +130,7 @@ export async function getExplorePosts(options: ExploreOptions = {}) {
           },
           isLiked: hasLiked,
           isSaved: hasSaved,
-          linkTo: `/explore/post/${post.id}`,
+          linkTo: `/post/${post.id}`,
         };
       })
     );

@@ -102,7 +102,7 @@ const MyPostComponent = () => {
   };
 
   const handleCreatePost = () => {
-    router.push("/dashboard/create-post");
+    router.push("/create-post");
   };
 
   const categories = Array.from(new Set(posts.map(post => post.category)));

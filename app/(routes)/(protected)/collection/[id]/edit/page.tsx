@@ -11,7 +11,7 @@ export default async function EditCollectionPage({
   const result = await getCollectionWithSnippets({ collectionId: id });
 
   if (!result.success || !result.data) return notFound();
-  if (!result.data.isOwner) redirect("/dashboard/collections");
+  if (!result.data.isOwner) redirect("/dashboard");
 
   return (
     <EditCollectionClient

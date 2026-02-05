@@ -122,7 +122,7 @@ const EditCollectionClient = ({
       const res = await deleteCollection(initialCollection.id);
       if (res.success) {
         toast.success("Collection deleted");
-        router.push("/dashboard/collections");
+        router.push("/my-collections");
       } else {
         toast.error(res.error?.message || "Delete failed");
       }
@@ -254,7 +254,7 @@ const EditCollectionClient = ({
               <button onClick={() => setShowDeleteModal(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
             </div>
             <h3 className="text-2xl font-black text-gray-900 mb-2">Delete Collection?</h3>
-            <p className="text-gray-500 mb-8 leading-relaxed">This will permanently delete "{initialCollection.name}" and its cover image.</p>
+            <p className="text-gray-500 mb-8 leading-relaxed">This will permanently delete &apos;{initialCollection.name}&apos; and its cover image.</p>
             <div className="flex gap-3">
               <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-4 font-bold text-gray-500">Cancel</button>
               <button onClick={handleDeleteCollection} disabled={isDeleting} className="flex-1 py-4 bg-red-500 text-white font-bold rounded-2xl">

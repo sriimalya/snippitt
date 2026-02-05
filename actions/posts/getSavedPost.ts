@@ -111,7 +111,7 @@ export async function getSavedPosts(options: GetSavedOptions = {}) {
           _count: post._count,
           isLiked: post.likes.length > 0,
           isSaved: true, // We know it's saved because we are in the SavedPost table
-          linkTo: `/explore/post/${post.id}`,
+          linkTo: `/post/${post.id}`,
         };
       })
     );

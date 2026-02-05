@@ -71,7 +71,7 @@ const CollectionViewClient = ({ collection, snippets, currentUserId, isOwner }: 
 
               {isOwner && (
                 <Link 
-                  href={`/dashboard/collections/${collection.id}/edit`}
+                  href={`/collections/${collection.id}/edit`}
                   className="flex items-center gap-2 px-8 py-4 bg-[#5865F2] text-white rounded-2xl font-black text-sm shadow-xl shadow-[#5865F2]/30 hover:scale-105 transition active:scale-95"
                 >
                   <Edit3 size={18} /> Edit Collection

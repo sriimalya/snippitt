@@ -132,9 +132,9 @@ export const Sidebar = ({ activeTab, setActiveTab, userId }: SidebarProps) => {
                       : tab === "explore"
                       ? "/explore"
                       : tab === "library"
-                      ? "/dashboard/my-collection"
+                      ? "/my-collection"
                       : tab === "saved"
-                      ? "/dashboard/saved"
+                      ? "/saved"
                       : "#"
                   }
                   onClick={() => setActiveTab(tab)}

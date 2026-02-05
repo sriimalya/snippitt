@@ -183,7 +183,7 @@ export async function getMyPosts(options: GetMyPostsOptions = {}): Promise<{
           isSaved: hasSaved,
 
           // For navigation in Snippet component
-          linkTo: `/dashboard/my-posts/${post.id}`,
+          linkTo: `/posts/${post.id}`,
         };
 
         return postData;

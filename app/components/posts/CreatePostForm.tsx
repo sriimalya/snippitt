@@ -110,7 +110,7 @@ const CreatePostForm = () => {
         // Redirect to the newly created post edit page
         if (res.data?.id) {
           setTimeout(() => {
-            router.push(`/dashboard/my-posts/${res.data.id}`);
+            router.push(`/my-posts/${res.data.id}`);
           }, 200);
         }
       } else {

@@ -93,7 +93,7 @@ const SavedPosts = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
         <div>
           <Link
-            href="/explore"
+            href="/explore/posts"
             className="flex items-center text-sm text-gray-500 hover:text-[#5865F2] mb-2 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-1" /> Back to Explore

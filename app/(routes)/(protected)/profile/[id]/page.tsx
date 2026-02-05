@@ -9,7 +9,6 @@ interface PageProps {
 }
 
 const Page = async ({ params }: PageProps) => {
-  // 1. Resolve the ID from params (Next.js 15 requirement)
   const { id } = await params; 
 
   const result = await getUserProfile({ profileId: id });

@@ -141,12 +141,12 @@ const EditPostForm = () => {
           setFiles(existingFiles);
         } else {
           toast.error(result.message || "Failed to load post");
-          router.push("/dashboard/my-posts");
+          router.push("/my-posts");
         }
       } catch (error) {
         console.error("Failed to fetch post:", error);
         toast.error("Failed to load post");
-        router.push("/dashboard/my-posts");
+        router.push("/my-posts");
       } finally {
         setIsLoading(false);
       }
@@ -477,7 +477,7 @@ const EditPostForm = () => {
           });
 
           setTimeout(() => {
-            router.push(`/dashboard/my-posts/${postId}`);
+            router.push(`/my-posts/${postId}`);
           }, 1000);
         } else {
           toast.error(result.message || "Failed to save changes");
@@ -608,7 +608,7 @@ const EditPostForm = () => {
             The post you&apos;re trying to edit doesn&apos;t exist.
           </p>
           <Button
-            onClick={() => router.push("/dashboard/my-posts")}
+            onClick={() => router.push("/my-posts")}
             variant="theme-primary"
           >
             Back to My Posts
@@ -626,7 +626,7 @@ const EditPostForm = () => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <Button
-                onClick={() => router.push("/dashboard/my-posts")}
+                onClick={() => router.push("/my-posts")}
                 variant="outline"
                 size="sm"
                 icon={<ArrowLeft className="w-4 h-4" />}

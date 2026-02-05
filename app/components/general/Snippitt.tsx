@@ -30,8 +30,8 @@ const Snippet = ({
     const inputDate = new Date(date);
     if (isNaN(inputDate.getTime())) return "";
 
-    // Use a fixed timestamp for server-side rendering
-    const now = new Date().getTime(); // This should work
+    
+    const now = new Date().getTime(); 
 
     const seconds = Math.floor((now - inputDate.getTime()) / 1000);
     if (seconds < 5) return "Just now";
@@ -57,7 +57,7 @@ const Snippet = ({
   }
 
   const handleCardClick = () => {
-    const link = post.linkTo || `/explore/post/${post.id}`;
+    const link = post.linkTo || `/post/${post.id}`;
     window.open(link, "_blank");
   };
 
@@ -108,8 +108,8 @@ const Snippet = ({
 
                   {isCurrentUsersPost && (
                     <>
-                      <Link
-                        href={`/dashboard/my-posts/${post.id}`}
+                      <Link 
+                        href={`/posts/${post.id}/edit`}
                         className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-primary/10 hover:text-primary transition"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -121,7 +121,7 @@ const Snippet = ({
                         className="flex items-center w-full px-4 py-2 text-sm text-red-500 hover:bg-primary/10 hover:text-primary transition"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // Handle delete
+                          
                         }}
                       >
                         <Trash size={16} className="mr-2" />
@@ -183,7 +183,7 @@ const Snippet = ({
 
         {/* Post Title & Description */}
         <Link
-          href={post.linkTo || `/explore/post/${post.id}`}
+          href={post.linkTo || `/post/${post.id}`}
           onClick={(e) => e.stopPropagation()}
         >
           <h3 className="font-semibold text-gray-900 mb-1 hover:text-primary transition line-clamp-1">

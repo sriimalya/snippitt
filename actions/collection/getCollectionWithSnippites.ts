@@ -145,7 +145,7 @@ export async function getCollectionWithSnippets({
           tags: p.tags.map((t) => t.tag.name),
           isLiked: currentUserId ? p.likes.length > 0 : false,
           isSaved: currentUserId ? p.savedBy.length > 0 : false,
-          linkTo: `/explore/post/${p.id}`,
+          linkTo: `/post/${p.id}`,
         };
       }),
     );
