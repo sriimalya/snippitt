@@ -4,13 +4,15 @@ interface TextInputProps {
   label?: string;
   placeholder?: string;
   value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  onChange: (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => void;
   className?: string;
   id?: string;
   name?: string;
   validate?: (value: string) => string | null;
-  textarea?: boolean; // New prop
-  rows?: number; // For textarea only
+  textarea?: boolean;
+  rows?: number;
 }
 
 const TextInput: React.FC<TextInputProps> = ({
@@ -22,29 +24,42 @@ const TextInput: React.FC<TextInputProps> = ({
   id,
   name,
   validate = (value) => (!value.trim() ? "This field cannot be empty." : null),
-  textarea = false, // Default to false
-  rows = 3, // Default rows for textarea
+  textarea = false,
+  rows = 3,
 }) => {
   const [error, setError] = useState<string | null>(null);
-  // const [touched, setTouched] = useState(false);
 
   const handleBlur = () => {
-    // setTouched(true);
     setError(validate(value));
   };
 
-  // Keep all original styling classes exactly as they were
-  const inputClasses = `w-full px-3 py-2.5 border rounded-3xl bg-[#E1E9F2] focus:outline-none focus:ring-1 focus:ring-[#94BBFF] focus:border-[#94BBFF] text-black text-sm transition-all ${
-    error ? "border-red-500 focus:ring-red-500" : "border-[#94BBFF]"
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    onChange(e);
+
+    // revalidate while typing
+    if (error) {
+      setError(validate(e.target.value));
+    }
+  };
+  const inputClasses = `w-full px-3 py-2.5 border rounded-3xl bg-[#F4F6FF] 
+  focus:outline-none focus:ring-1 focus:ring-[#5865F2] focus:border-[#5865F2] 
+  text-black text-sm transition-all ${
+    error ? "border-red-500 focus:ring-red-500" : "border-[#5865F2]/40"
   }`;
 
   return (
     <div className={`mb-3 ${className}`}>
       {label && (
-        <label htmlFor={id} className="block text-sm font-small font-semibold text-slate-600 mb-1">
+        <label
+          htmlFor={id}
+          className="block text-sm font-semibold text-slate-600 mb-1"
+        >
           {label}
         </label>
       )}
+
       <div className="relative">
         {textarea ? (
           <textarea
@@ -52,10 +67,10 @@ const TextInput: React.FC<TextInputProps> = ({
             name={name}
             placeholder={placeholder}
             value={value}
-            onChange={onChange}
+            onChange={handleChange}
             onBlur={handleBlur}
             rows={rows}
-            className={inputClasses} // Using the same classes
+            className={inputClasses}
           />
         ) : (
           <input
@@ -64,9 +79,9 @@ const TextInput: React.FC<TextInputProps> = ({
             name={name}
             placeholder={placeholder}
             value={value}
-            onChange={onChange}
+            onChange={handleChange}
             onBlur={handleBlur}
-            className={inputClasses} // Original styling preserved
+            className={inputClasses}
           />
         )}
       </div>

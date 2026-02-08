@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 interface EmailInputProps {
   label?: string;
@@ -6,9 +6,10 @@ interface EmailInputProps {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   className?: string;
-  error?: string;
   id?: string;
   name?: string;
+  validate?: (value: string) => string | null;
+  error?: string | null;
 }
 
 const EmailInput: React.FC<EmailInputProps> = ({
@@ -17,32 +18,58 @@ const EmailInput: React.FC<EmailInputProps> = ({
   value,
   onChange,
   className = "",
-  error,
   id,
   name,
+  validate = (value) => {
+    if (!value.trim()) return "Email is required.";
+    if (!/^\S+@\S+\.\S+$/.test(value)) return "Enter a valid email.";
+    return null;
+  },
 }) => {
+  const [error, setError] = useState<string | null>(null);
+
+  const handleBlur = () => {
+    setError(validate(value));
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange(e);
+
+    if (error) {
+      setError(validate(e.target.value));
+    }
+  };
+
+  const inputClasses = `w-full px-3 py-2.5 border rounded-3xl bg-[#F4F6FF] 
+  focus:outline-none focus:ring-1 focus:ring-[#5865F2] focus:border-[#5865F2] 
+  text-black text-sm transition-all ${
+    error ? "border-red-500 focus:ring-red-500" : "border-[#5865F2]/40"
+  }`;
+
   return (
     <div className={`mb-3 ${className}`}>
       {label && (
-        <label className="block text-sm font-small text-slate-600 font-semibold mb-1">
+        <label
+          htmlFor={id}
+          className="block text-sm font-semibold text-slate-600 mb-1"
+        >
           {label}
         </label>
       )}
+
       <div className="relative">
         <input
           type="email"
-          placeholder={placeholder}
-          value={value}
-          onChange={onChange}
           id={id}
           name={name}
-          className={`w-full px-3 py-2.5 border border-[#94BBFF] rounded-3xl bg-[#E1E9F2] focus:outline-none focus:ring-1 focus:ring-[#94BBFF] focus:border-[#94BBFF] text-black text-sm ${
-            error ? "border-red-500" : ""
-          }`}
+          placeholder={placeholder}
+          value={value}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          className={inputClasses}
         />
       </div>
 
-      {/* Error Message */}
       {error && <p className="mt-1 px-2 text-xs text-red-500">{error}</p>}
     </div>
   );

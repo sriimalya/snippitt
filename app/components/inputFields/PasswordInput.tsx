@@ -6,10 +6,11 @@ interface PasswordInputProps {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   className?: string;
-  error?: string;
-  showStrength?: boolean;
   id?: string;
   name?: string;
+  showStrength?: boolean;
+  validate?: (value: string) => string | null;
+  error?: string | null;
 }
 
 const PasswordInput: React.FC<PasswordInputProps> = ({
@@ -18,103 +19,156 @@ const PasswordInput: React.FC<PasswordInputProps> = ({
   value,
   onChange,
   className = "",
-  error,
-  showStrength = false,
   id,
   name,
+  showStrength = false,
+  validate = (value) => {
+    if (!value.trim()) return "Password is required.";
+    if (value.length < 8) return "Password must be at least 8 characters.";
+    return null;
+  },
 }) => {
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [strength, setStrength] = useState(0);
 
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
   };
 
-  // Debounce password strength calculation for performance optimization
+  const handleBlur = () => {
+    setError(validate(value));
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange(e);
+
+    if (error) {
+      setError(validate(e.target.value));
+    }
+  };
+
+  // password strength calc
   useEffect(() => {
     const timer = setTimeout(() => {
-      let strengthScore = 0;
-      if (value.length >= 8) strengthScore++;
-      if (/[A-Z]/.test(value)) strengthScore++;
-      if (/[a-z]/.test(value)) strengthScore++;
-      if (/[0-9]/.test(value)) strengthScore++;
-      if (/[!@#$%^&*(),.?":{}|<>]/.test(value)) strengthScore++;
-      setStrength(strengthScore);
-    }, 300);
+      let score = 0;
+      if (value.length >= 8) score++;
+      if (/[A-Z]/.test(value)) score++;
+      if (/[a-z]/.test(value)) score++;
+      if (/[0-9]/.test(value)) score++;
+      if (/[!@#$%^&*(),.?":{}|<>]/.test(value)) score++;
+      setStrength(score);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, [value]);
 
-  // Helper function to determine strength label
   const getStrengthLabel = () => {
-    if (strength === 0) return "Weak";
     if (strength <= 2) return "Weak";
-    if (strength <= 3) return "Average";
+    if (strength === 3) return "Average";
     if (strength === 4) return "Good";
     return "Strong";
   };
 
-  // Helper function to determine bar color based on strength
   const getStrengthColor = () => {
-    if (strength === 0) return "bg-red-500";
     if (strength <= 2) return "bg-red-500";
-    if (strength <= 3) return "bg-yellow-500";
-    if (strength === 4) return "bg-blue-400";
+    if (strength === 3) return "bg-yellow-500";
+    if (strength === 4) return "bg-[#5865F2]";
     return "bg-green-500";
   };
 
-  // Calculate width percentage based on strength
-  const getStrengthWidth = () => {
-    return `${Math.max(5, (strength / 5) * 100)}%`;
-  };
+  const Requirement = ({ ok, label }: { ok: boolean; label: string }) => (
+    <div className="flex items-center gap-1">
+      <div
+        className={`w-1.5 h-1.5 rounded-full ${
+          ok ? "bg-green-500" : "bg-slate-300"
+        }`}
+      />
+      <span className={ok ? "text-slate-700" : ""}>{label}</span>
+    </div>
+  );
+
+  const inputClasses = `w-full px-3 py-2.5 border rounded-3xl bg-[#F4F6FF] 
+  focus:outline-none focus:ring-1 focus:ring-[#5865F2] focus:border-[#5865F2] 
+  text-black text-sm transition-all ${
+    error ? "border-red-500 focus:ring-red-500" : "border-[#5865F2]/40"
+  }`;
 
   return (
     <div className={`mb-3 ${className}`}>
       {label && (
         <label
           htmlFor={id}
-          className="block text-sm font-small text-slate-600 mb-1 font-semibold"
+          className="block text-sm font-semibold text-slate-600 mb-1"
         >
           {label}
         </label>
       )}
+
       <div className="relative">
         <input
           type={showPassword ? "text" : "password"}
-          placeholder={placeholder}
-          value={value}
-          onChange={onChange}
           id={id}
           name={name}
+          placeholder={placeholder}
+          value={value}
+          onChange={handleChange}
+          onBlur={handleBlur}
           autoComplete="new-password"
-          aria-describedby={showStrength ? "password-strength" : undefined}
-          className={`w-full px-3 py-2.5 border border-[#94BBFF] rounded-3xl bg-[#E1E9F2] focus:outline-none focus:ring-1 focus:ring-[#94BBFF] text-black text-sm${
-            error ? "border-red-500" : ""
-          }`}
+          className={inputClasses}
         />
 
         <button
           type="button"
           onClick={togglePasswordVisibility}
-          className="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5"
-          aria-label="Toggle password visibility"
+          className="absolute inset-y-0 right-3 flex items-center text-sm text-slate-500"
         >
-          {showPassword ? "👁️" : "🔒"}
+          {showPassword ? "👁️" : "👁️‍🗨️"}
         </button>
       </div>
 
-      {/* Password Strength Indicator as a horizontal bar */}
       {showStrength && value.length > 0 && (
-        <div id="password-strength" className="mt-2">
-          <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className={`h-full ${getStrengthColor()} transition-all duration-300 ease-in-out`}
-              style={{ width: getStrengthWidth() }}
-            ></div>
+        <div className="mt-3 space-y-2">
+          {/* Strength bars */}
+          <div className="flex gap-1">
+            {[1, 2, 3, 4, 5].map((level) => (
+              <div
+                key={level}
+                className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                  strength >= level ? getStrengthColor() : "bg-slate-200"
+                }`}
+              />
+            ))}
           </div>
-          <p className="text-xs text-white mt-1 text-right">
-            {getStrengthLabel()}
-          </p>
+
+          {/* Label */}
+          <div className="flex justify-between items-center">
+            <span
+              className={`text-xs font-medium ${
+                strength <= 2
+                  ? "text-red-500"
+                  : strength === 3
+                    ? "text-yellow-500"
+                    : strength === 4
+                      ? "text-blue-500"
+                      : "text-green-500"
+              }`}
+            >
+              {getStrengthLabel()} password
+            </span>
+
+            {/* score */}
+            <span className="text-[10px] text-slate-400">{strength}/5</span>
+          </div>
+
+          {/* Requirements checklist */}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-500">
+            <Requirement ok={value.length >= 8} label="8+ characters" />
+            <Requirement ok={/[A-Z]/.test(value)} label="Uppercase" />
+            <Requirement ok={/[a-z]/.test(value)} label="Lowercase" />
+            <Requirement ok={/[0-9]/.test(value)} label="Number" />
+            <Requirement ok={/[!@#$%^&*]/.test(value)} label="Symbol" />
+          </div>
         </div>
       )}
 

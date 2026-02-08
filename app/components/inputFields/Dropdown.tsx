@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 interface DropdownProps {
@@ -7,10 +7,11 @@ interface DropdownProps {
   value: string;
   onChange: (event: React.ChangeEvent<HTMLSelectElement>) => void;
   className?: string;
-  error?: string;
   id?: string;
   name?: string;
   placeholder?: string;
+  validate?: (value: string) => string | null;
+  error?: string | null;
   required?: boolean;
 }
 
@@ -20,93 +21,68 @@ const Dropdown: React.FC<DropdownProps> = ({
   value,
   onChange,
   className = "",
-  error,
   id,
   name,
   placeholder = "Select an option",
   required = false,
+  validate = (value) => (!value ? "This field cannot be empty." : null),
 }) => {
+  const [error, setError] = useState<string | null>(null);
+
+  const handleBlur = () => {
+    setError(validate(value));
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    onChange(e);
+
+    if (error) {
+      setError(validate(e.target.value));
+    }
+  };
+
+  const inputClasses = `w-full px-3 py-2.5 border rounded-3xl bg-[#F4F6FF]
+  focus:outline-none focus:ring-1 focus:ring-[#5865F2] focus:border-[#5865F2]
+  text-black text-sm transition-all appearance-none ${
+    error ? "border-red-500 focus:ring-red-500" : "border-[#5865F2]/40"
+  }`;
+
   return (
-    <div className={`mb-4 ${className}`}>
-      {/* Label */}
+    <div className={`mb-3 ${className}`}>
       {label && (
-        <div className="flex items-center justify-between mb-2">
-          <label className="block text-sm font-semibold text-gray-900">
-            {label}
-            {required && <span className="text-red-500 ml-1">*</span>}
-          </label>
-        </div>
+        <label
+          htmlFor={id}
+          className="block text-sm font-semibold text-slate-600 mb-1"
+        >
+          {label}
+        </label>
       )}
 
-      {/* Dropdown Container */}
       <div className="relative">
         <select
-          value={value}
-          onChange={onChange}
           id={id}
           name={name}
-          required={required}
-          className={`w-full px-4 py-3 rounded-xl border-2 bg-[#F8FAFD] focus:bg-white transition-all duration-200
-            text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#94BBFF]/30 appearance-none
-            ${
-              error
-                ? "border-red-300 hover:border-red-400 focus:border-red-300"
-                : "border-gray-200 hover:border-[#94BBFF]/50 focus:border-[#5865F2]"
-            }
-            ${!value ? "text-gray-400" : "text-gray-900"}`}
+          value={value}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          className={inputClasses}
         >
-          <option value="" disabled className="text-gray-400">
+          <option value="" disabled>
             {placeholder}
           </option>
+
           {options.map((option) => (
-            <option
-              key={option.value}
-              value={option.value}
-              className="text-gray-900 bg-white py-2"
-            >
+            <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
         </select>
 
-        {/* Custom Dropdown Arrow */}
-        <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
-          <ChevronDown
-            className={`w-4 h-4 transition-transform duration-200
-            ${error ? "text-red-400" : "text-gray-400"}`}
-          />
-        </div>
-
-        {/* Focus Border Effect */}
-        <div className="absolute inset-0 rounded-xl pointer-events-none overflow-hidden">
-          <div
-            className={`absolute inset-0 border-2 border-transparent rounded-xl transition-all duration-300
-            ${
-              error
-                ? "group-focus-within:border-red-300"
-                : "group-focus-within:border-[#5865F2]"
-            }`}
-          />
-        </div>
+        {/* Arrow */}
+        <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
       </div>
 
-      {/* Error Message */}
-      {error && (
-        <div className="mt-2 flex items-center text-red-600 text-sm">
-          <div className="w-1.5 h-1.5 bg-red-500 rounded-full mr-2"></div>
-          {error}
-        </div>
-      )}
-
-      {/* Selected Value Indicator */}
-      {value && !error && (
-        <div className="mt-2 flex items-center text-xs text-gray-500">
-          <div className="w-1.5 h-1.5 bg-[#5865F2] rounded-full mr-2"></div>
-          <span>
-            Selected: {options.find((opt) => opt.value === value)?.label}
-          </span>
-        </div>
-      )}
+      {error && <p className="mt-1 px-2 text-xs text-red-500">{error}</p>}
     </div>
   );
 };
