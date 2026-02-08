@@ -9,522 +9,268 @@ import {
 } from "@/actions/auth/authActions";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import verifyImage from "@/public/assets/verify.png";
-import Button from "@/app/components/Button";
+import Link from "next/link";
 
-const EmailVerificationPage = () => {
+import Button from "@/app/components/Button";
+import Logo from "@/assets/Snippit-logo-v2.svg";
+
+import {
+  Bookmark,
+  Camera,
+  Share2,
+  Film,
+  Mic,
+  FileText,
+  Sparkles,
+  Globe,
+} from "lucide-react";
+
+const VerifyEmailPage = () => {
   const { data: session, update } = useSession();
   const router = useRouter();
+
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
   const [showVerification, setShowVerification] = useState(false);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
 
-  const checkTokenStatus = useCallback(async () => {
-    try {
-      const result = await checkVerificationToken(session!.user!.email);
+  const [isMobile, setIsMobile] = useState(false);
 
-      if (result.success && result.exists) {
-        if (result.expiresAt) {
-          setExpiresAt(new Date(result.expiresAt));
-        } else {
-          setExpiresAt(null);
-        }
-        setShowVerification(true);
-      }
-      setInitialLoading(false);
-    } catch (error) {
-      console.error("Error checking token status:", error);
-      setInitialLoading(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const floatingIcons = [
+    { Icon: Bookmark, delay: "0s", duration: "4s", x: "10%", y: "15%" },
+    { Icon: Camera, delay: "0.5s", duration: "5s", x: "85%", y: "20%" },
+    { Icon: Share2, delay: "1s", duration: "4.5s", x: "15%", y: "80%" },
+    { Icon: Film, delay: "1.5s", duration: "5.5s", x: "85%", y: "65%" },
+    { Icon: Mic, delay: "2s", duration: "4s", x: "20%", y: "40%" },
+    { Icon: FileText, delay: "2.5s", duration: "5s", x: "75%", y: "40%" },
+    { Icon: Sparkles, delay: "3s", duration: "4.5s", x: "12%", y: "55%" },
+    { Icon: Globe, delay: "3.5s", duration: "5.5s", x: "75%", y: "80%" },
+  ];
+
+  const iconsToRender = isMobile ? floatingIcons.slice(0, 4) : floatingIcons;
+
+  const checkTokenStatus = useCallback(async () => {
+    if (!session?.user?.email) return;
+
+    const result = await checkVerificationToken(session.user.email);
+
+    if (result.success && result.exists) {
+      setShowVerification(true);
+      if (result.expiresAt) setExpiresAt(new Date(result.expiresAt));
     }
+
+    setInitialLoading(false);
   }, [session]);
 
   useEffect(() => {
-    if (session?.user?.email) {
-      checkTokenStatus();
-    } else {
-      setInitialLoading(false);
-    }
-  }, [session?.user?.email, checkTokenStatus]);
+    checkTokenStatus();
+  }, [checkTokenStatus]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    if (!expiresAt) return;
 
-    if (expiresAt) {
-      interval = setInterval(() => {
-        const now = new Date();
-        const diffMs = expiresAt.getTime() - now.getTime();
+    const interval = setInterval(() => {
+      const diff = expiresAt.getTime() - Date.now();
 
-        if (diffMs <= 0) {
-          setTimeRemaining("Expired");
-          setExpiresAt(null);
-          clearInterval(interval);
-        } else {
-          const minutes = Math.floor(diffMs / (1000 * 60));
-          const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-          setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, "0")}`);
-        }
-      }, 1000);
-    }
+      if (diff <= 0) {
+        setTimeRemaining("Expired");
+        setExpiresAt(null);
+        clearInterval(interval);
+      } else {
+        const m = Math.floor(diff / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        setTimeRemaining(`${m}:${s.toString().padStart(2, "0")}`);
+      }
+    }, 1000);
 
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [expiresAt]);
 
-  const handleSendVerification = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      setMessage("");
+  const handleSend = async () => {
+    setLoading(true);
 
+    setError("");
+    setMessage("");
+    setSuccess(false);
+
+    try {
       const result = await sendVerificationToken(session!.user!.email);
 
       if (result.success) {
         setMessage(result.message);
-        setExpiresAt(new Date(result.data!.expiresAt));
         setShowVerification(true);
+        setExpiresAt(new Date(result.data!.expiresAt));
       } else {
         setError(result.message);
-        if (
-          result.code === "TOKEN_ALREADY_SENT" &&
-          result.message.includes("minutes")
-        ) {
-          const match = result.message.match(/in (\d+) minutes/);
-          if (match && match[1]) {
-            const minutes = parseInt(match[1], 10);
-            setExpiresAt(new Date(Date.now() + minutes * 60 * 1000));
-            setShowVerification(true);
-          }
-        }
       }
-    } catch (error: any) {
-      setError("An unexpected error occurred. Please try again.");
-      console.error(error);
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      setError("Failed to send email. Please try again.");
     }
+
+    setLoading(false);
   };
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!otp) {
-      setError("Please enter the verification code");
-      return;
+    if (!otp) return setError("Enter code");
+
+    setVerifying(true);
+
+    setError("");
+    setMessage("");
+
+    const result = await verifyToken(session!.user!.email, otp);
+
+    if (result.success) {
+      setSuccess(true);
+      await update();
+      setTimeout(() => router.push("/dashboard"), 2000);
+    } else {
+      setError(result.message);
     }
 
-    try {
-      setVerifying(true);
-      setError("");
-      setMessage("");
-
-      const result = await verifyToken(session!.user!.email, otp);
-
-      if (result.success) {
-        setSuccess(true);
-        setMessage(result.message);
-        await update();
-        setTimeout(() => {
-          router.push("/dashboard");
-        }, 2000);
-      } else {
-        setError(result.message);
-      }
-    } catch (error: any) {
-      setError("Failed to verify email. Please try again.");
-      console.error(error);
-    } finally {
-      setVerifying(false);
-    }
+    setVerifying(false);
   };
-  const handleTryDifferentAccount = () => {
-    signOut();
-    router.push("/auth/sign-in");
-  };
+
   if (initialLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="h-screen flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-[#5865F2] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
-  if (!session || !session.user) {
+  if (!session) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8 border border-blue-100">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold blue-800 mb-4">
-              Sign In Required
-            </h1>
-            <p className="text-blue-600 mb-6">
-              Please sign in to verify your email address.
-            </p>
-            <button
-              onClick={() => router.push("/auth/sign-in")}
-              className="w-full py-3 text-blue-600 font-medium hover:from-blue-700 hover:to-blue-700 transition-all duration-200 transform hover:scale-[1.02]"
-            >
-              Go to Sign In
-            </button>
-          </div>
-        </div>
+      <div className="h-screen flex items-center justify-center">
+        <Link href="/auth/sign-in" className="text-[#5865F2] font-semibold">
+          Go to sign in
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col lg:flex-row">
-      {/* Left Side - Image Section */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-50 to-blue-100">
-        <div className="w-full h-full flex flex-col items-center justify-center p-10">
-          <div className="relative w-full h-[60vh] max-w-2xl mb-8">
-            <Image
-              src={verifyImage}
-              alt="Email Verification"
-              fill
-              className="object-contain drop-shadow-2xl"
-              priority
-            />
-          </div>
-          <div className="text-center max-w-md space-y-3 px-6">
-            <h2 className="text-3xl font-bold text-blue-800">
-              Verify Your Email
-            </h2>
-            <p className="text-blue-blue-800 text-opacity-80">
-              Secure your account with email verification and unlock all
-              features.
-            </p>
-          </div>
+    <div className="h-screen bg-white flex items-center justify-center relative overflow-hidden px-4">
+      {/* Floating icons */}
+      {iconsToRender.map(({ Icon, delay, duration, x, y }, i) => (
+        <div
+          key={i}
+          className="absolute text-[#5865F2]/20"
+          style={{
+            left: x,
+            top: y,
+            animation: `float ${duration} ease-in-out ${delay} infinite`,
+          }}
+        >
+          <Icon size={isMobile ? 22 : 36} strokeWidth={1.5} />
         </div>
-      </div>
+      ))}
 
-      {/* Right Side - Form Section */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center px-6 py-8 lg:py-12">
-        <div className="w-full max-w-md">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-blue-800 mb-2">
-              {success ? "Email Verified!" : "Verify Your Email"}
-            </h1>
-            <p className="text-blue-800 font-bold text-base">
-              {success
-                ? "Your email has been successfully verified"
-                : "Secure your account with email verification"}
+      <div className="w-full max-w-md">
+        {/* logo */}
+        <div className="text-center mb-4">
+          <Image
+            src={Logo}
+            alt="logo"
+            width={140}
+            height={40}
+            className="mx-auto h-12"
+          />
+        </div>
+
+        <div className="bg-white/90 backdrop-blur rounded-3xl shadow-xl shadow-[#5865F2]/10 border border-gray-100 px-6 py-6">
+          <div className="text-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-700">
+              {success ? "Email verified" : "Verify your email"}
+            </h2>
+
+            <p className="text-sm text-gray-500 mt-1">
+              <button
+                onClick={() => {
+                  signOut();
+                  router.push("/auth/sign-in");
+                }}
+                className="text-[#5865F2] font-semibold"
+              >
+                Use different account
+              </button>
             </p>
-          </div>
-
-          {/* Mobile Image - Only visible on mobile */}
-          <div className="lg:hidden mb-8">
-            <div className="relative w-48 h-48 mx-auto">
-              <Image
-                src={verifyImage}
-                alt="Email Verification"
-                fill
-                className="object-contain"
-              />
-            </div>
           </div>
 
           {success ? (
-            <div className="text-center space-y-6 bg-white rounded-xl p-8 shadow-lg border border-green-100">
-              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100">
-                <svg
-                  className="h-8 w-8 text-green-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-800">{message}</h3>
-              <p className="text-gray-600">Redirecting to dashboard...</p>
-              <div className="w-12 h-1 bg-gradient-to-r from-green-400 to-green-600 rounded-full mx-auto animate-pulse"></div>
-            </div>
+            <p className="text-green-600 text-center text-sm">
+              Verified successfully. Redirecting...
+            </p>
           ) : !showVerification ? (
-            <div className="space-y-6 bg-white rounded-xl p-8 shadow-lg border border-blue-100">
-              <div className="text-center space-y-4">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-                  <svg
-                    className="w-8 h-8 text-blue-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-gray-600">
-                    To access all features, please verify your email address:
-                  </p>
-                  <p className="font-semibold text-gray-800 mt-2 text-lg">
-                    {session.user.email}
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600 text-center">
+                Verify{" "}
+                <span className="font-semibold">{session.user.email}</span>
+              </p>
 
-              {message && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center">
-                    <svg
-                      className="w-5 h-5 text-green-500 mr-3"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    <p className="text-green-700 text-sm">{message}</p>
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center">
-                    <svg
-                      className="w-5 h-5 text-red-500 mr-3"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <p className="text-red-700 text-sm">{error}</p>
-                  </div>
-                </div>
-              )}
               <Button
-                onClick={handleSendVerification}
+                onClick={handleSend}
                 disabled={loading}
-                variant="custom-blue"
-                size="lg"
-                className="w-full flex items-center justify-center"
+                className="w-full h-11 bg-gradient-to-r from-[#5865F2] to-[#6B95FF]"
               >
-                {loading ? (
-                  <>
-                    <div className="w-5 h-5 border-t-2 border-white border-solid rounded-full animate-spin mr-3"></div>
-                    Sending Verification Code...
-                  </>
-                ) : (
-                  "Send Verification Code"
-                )}
+                {loading ? "Sending..." : "Send verification code"}
               </Button>
-              
-              {/* Try with different account button */}
-              <div className="text-center pt-4 border-t border-gray-100">
-                <button
-                  onClick={handleTryDifferentAccount}
-                  className="text-blue-600 hover:text-blue-700 font-medium text-sm transition-colors duration-200"
-                >
-                  Try with different account
-                </button>
-              </div>
             </div>
           ) : (
-            <div className="space-y-6 bg-white rounded-xl p-8 shadow-lg border border-blue-100">
-              <div className="text-center space-y-4">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-                  <svg
-                    className="w-8 h-8 text-blue-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-gray-600">
-                    We&apos;ve sent a verification code to:
-                  </p>
-                  <p className="font-semibold text-gray-800 mt-1 text-lg">
-                    {session.user.email}
-                  </p>
-                </div>
+            <form onSubmit={handleVerify} className="space-y-4">
+              <input
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="Enter code"
+                className="w-full border rounded-xl h-11 px-4 text-center tracking-widest"
+              />
 
-                {timeRemaining && (
-                  <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <div className="text-sm font-medium text-blue-700 mb-1">
-                      Code expires in
-                    </div>
-                    <div
-                      className={`text-2xl font-bold ${
-                        timeRemaining === "Expired"
-                          ? "text-red-600"
-                          : "text-blue-600"
-                      }`}
-                    >
-                      {timeRemaining}
-                    </div>
-                  </div>
-                )}
-              </div>
+              {timeRemaining && (
+                <p className="text-xs text-center text-gray-500">
+                  Expires in {timeRemaining}
+                </p>
+              )}
 
-              <form onSubmit={handleVerify} className="space-y-6">
-                <div>
-                  <label
-                    htmlFor="otp"
-                    className="block text-sm font-semibold text-gray-800 mb-3"
-                  >
-                    Verification Code
-                  </label>
-                  <input
-                    id="otp"
-                    name="otp"
-                    type="text"
-                    autoComplete="one-time-code"
-                    required
-                    value={otp}
-                    onChange={(e) =>
-                      setOtp(e.target.value.replace(/[^0-9]/g, ""))
-                    }
-                    className="w-full px-4 py-3 text-lg text-center tracking-widest border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-                    placeholder="Enter 6-digit code"
-                    maxLength={6}
-                  />
-                </div>
+              <Button
+                type="submit"
+                disabled={verifying}
+                className="w-full h-11 bg-gradient-to-r from-[#5865F2] to-[#6B95FF]"
+              >
+                {verifying ? "Verifying..." : "Verify email"}
+              </Button>
 
-                {message && (
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center">
-                      <svg
-                        className="w-5 h-5 text-green-500 mr-3"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                      <p className="text-green-700 text-sm">{message}</p>
-                    </div>
-                  </div>
-                )}
+              <button
+                type="button"
+                onClick={handleSend}
+                className="text-xs text-[#5865F2] w-full"
+              >
+                Resend code
+              </button>
+            </form>
+          )}
 
-                {error && (
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-center">
-                      <svg
-                        className="w-5 h-5 text-red-500 mr-3"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      <p className="text-red-700 text-sm">{error}</p>
-                    </div>
-                  </div>
-                )}
+          {!success && error && (
+            <p className="text-red-600 text-xs text-center mt-3">{error}</p>
+          )}
 
-                <div className="flex space-x-3">
-                  <Button
-                    type="submit"
-                    disabled={verifying || timeRemaining === "Expired"}
-                    variant="custom-blue"
-                    size="md"
-                    className="flex-1 flex items-center justify-center"
-                  >
-                    {verifying ? (
-                      <>
-                        <div className="w-5 h-5 border-t-2 border-white border-solid rounded-full animate-spin mr-3"></div>
-                        Verifying...
-                      </>
-                    ) : (
-                      "Verify Email"
-                    )}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setShowVerification(false);
-                      setOtp("");
-                      setError("");
-                      setMessage("");
-                    }}
-                    variant="outline"
-                    size="md"
-                    className="px-6"
-                  >
-                    Back
-                  </Button>
-                </div>
-
-                <div className="text-center">
-                  <Button
-                    type="button"
-                    onClick={handleSendVerification}
-                    disabled={
-                      loading ||
-                      (timeRemaining !== null && timeRemaining !== "Expired")
-                    }
-                    variant="custom-blue"
-                    size="sm"
-                    className="text-blue-600 hover:text-blue-700 disabled:text-blue-800 disabled:cursor-not-allowed font-bold"
-                  >
-                    {loading
-                      ? "Sending..."
-                      : timeRemaining && timeRemaining !== "Expired"
-                      ? "Code already sent"
-                      : "Resend verification code"}
-                  </Button>
-                </div>
-
-                {/* Try with different account button */}
-                <div className="text-center pt-4 border-t border-gray-100">
-                  <button
-                    onClick={handleTryDifferentAccount}
-                    className="text-blue-600 hover:text-blue-700 font-medium text-sm transition-colors duration-200"
-                  >
-                    Try with different account
-                  </button>
-                </div>
-              </form>
-            </div>
+          {!success && message && (
+            <p className="text-green-600 text-xs text-center mt-3">{message}</p>
           )}
         </div>
       </div>
@@ -532,4 +278,4 @@ const EmailVerificationPage = () => {
   );
 };
 
-export default EmailVerificationPage;
+export default VerifyEmailPage;
