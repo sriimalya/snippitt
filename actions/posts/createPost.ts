@@ -16,7 +16,6 @@ export async function createPost(data: CreatePostInput) {
         code: "UNAUTHORIZED",
       };
     }
-    console.log("User ID:", session.user.id);
 
     const userId = session.user.id;
 
@@ -64,6 +63,3 @@ export async function createPost(data: CreatePostInput) {
     };
   }
 }
-
-
-

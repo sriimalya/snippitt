@@ -5,24 +5,48 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-providers";
 import { extractKeyFromUrl, generatePresignedViewUrl } from "@/lib/aws_s3";
 
+async function getValidImageUrl(url: string | null | undefined) {
+  if (!url) return null;
+
+  const isExternal =
+    url.includes("googleusercontent.com") ||
+    (url.includes("http") && !url.includes("amazonaws.com"));
+
+  if (isExternal) return url;
+
+  try {
+    const key = extractKeyFromUrl(url);
+    return await generatePresignedViewUrl(key);
+  } catch (error) {
+    console.error("S3 Signing failed for URL:", url, error);
+    return url; 
+
+  }
+}
+
 async function signPostImages(posts: any[]) {
   return await Promise.all(
     posts.map(async (post) => {
-      // Sign Post Images
+
       const signedImages = await Promise.all(
         post.images.map(async (img: any) => ({
           ...img,
-          url: await generatePresignedViewUrl(extractKeyFromUrl(img.url)),
+          url: await getValidImageUrl(img.url),
         })),
       );
-      // Sign Author Avatar
-      const signedAvatar = post.user.avatar
-        ? await generatePresignedViewUrl(extractKeyFromUrl(post.user.avatar))
-        : null;
+
+      const coverImageData =
+        post.images.find((img: any) => img.isCover === true) || post.images[0]; 
+
+      const signedCoverUrl = await getValidImageUrl(coverImageData?.url);
+
+      const signedAvatar = await getValidImageUrl(post.user.avatar);
 
       return {
         ...post,
         images: signedImages,
+
+        coverImage: signedCoverUrl,
         user: { ...post.user, avatar: signedAvatar },
       };
     }),
@@ -36,30 +60,28 @@ export async function getDashboardData() {
   const userId = session.user.id;
 
   try {
-    const [stats, recentPosts, drafts, collections] = await Promise.all([
-      // 1. Stats: Following/Followers count
+    const [userData, recentPosts, drafts, collections] = await Promise.all([
+
       prisma.user.findUnique({
         where: { id: userId },
         select: {
-          _count: {
-            select: { followers: true, followings: true },
-          },
+          avatar: true,
+          _count: { select: { followers: true, followings: true } },
         },
       }),
 
-      // 2. Recent Posts (Latest 3 Published)
       prisma.post.findMany({
         where: { userId, isDraft: false },
         take: 3,
         orderBy: { createdAt: "desc" },
         include: {
           user: { select: { id: true, username: true, avatar: true } },
-          images: true,
-          _count: { select: { likes: true, comments: true } },
+          images: true, 
+
+          _count: { select: { likes: true, comments: true, savedBy: true } },
         },
       }),
 
-      // 3. Drafts (Latest 3)
       prisma.post.findMany({
         where: { userId, isDraft: true },
         take: 3,
@@ -67,11 +89,10 @@ export async function getDashboardData() {
         include: {
           user: { select: { id: true, username: true, avatar: true } },
           images: true,
-          _count: { select: { likes: true, comments: true } },
+          _count: { select: { likes: true, comments: true, savedBy: true } },
         },
       }),
 
-      // 4. Collections (Latest 3)
       prisma.collection.findMany({
         where: { userId },
         take: 3,
@@ -82,16 +103,20 @@ export async function getDashboardData() {
       }),
     ]);
 
-    // Sign S3 URLs for Posts and Drafts
-    const [signedPosts, signedDrafts] = await Promise.all([
-      signPostImages(recentPosts),
-      signPostImages(drafts),
-    ]);
+    const [signedPosts, signedDrafts, signedDashboardAvatar] =
+      await Promise.all([
+        signPostImages(recentPosts),
+        signPostImages(drafts),
+        getValidImageUrl(userData?.avatar),
+      ]);
 
     return {
       success: true,
       data: {
-        stats: stats?._count || { followers: 0, following: 0 },
+        stats: {
+          ...(userData?._count || { followers: 0, followings: 0 }),
+          avatar: signedDashboardAvatar,
+        },
         recentPosts: signedPosts,
         drafts: signedDrafts,
         collections: collections,
@@ -102,3 +127,4 @@ export async function getDashboardData() {
     return { success: false, message: "Failed to load dashboard data" };
   }
 }
+

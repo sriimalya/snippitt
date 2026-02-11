@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Plus, Folder, FileText, ArrowRight } from "lucide-react";
 import Snippitt from "@/app/components/general/Snippitt";
+import Image from "next/image";
 
 const DashboardClient = ({ data, currentUserId }: any) => {
   const { stats, recentPosts, drafts, collections } = data;
@@ -11,9 +12,39 @@ const DashboardClient = ({ data, currentUserId }: any) => {
   const toggleMenu = (id: string) => setMenuOpen(menuOpen === id ? null : id);
   return (
     <div className="space-y-12 pb-20">
-      {/* 1. Stats Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
+      {/* 1. Stats Overview & User Profile */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* User Profile Card */}
+        <div className="bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4">
+          <div className="w-14 h-14 bg-primary/20 overflow-hidden rounded-2xl flex-shrink-0">
+            {stats.avatar ? (
+              <Image
+                src={stats.avatar} // This is the signed S3 URL from your server action
+                alt="My Profile"
+                className="w-full h-full object-cover"
+                width={56}
+                height={56}
+                unoptimized={true}
+              />
+            ) : (
+              <span className="w-full h-full flex items-center justify-center text-xl font-black text-[#5865F2]">
+                {/* You can pass the username through 'data' to get the initial */}
+                U
+              </span>
+            )}
+          </div>
+          <div className="overflow-hidden">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+              Creator
+            </p>
+            <h3 className="text-lg font-black text-gray-900 truncate">
+              Dashboard
+            </h3>
+          </div>
+        </div>
+
+        {/* Follower Stats */}
+        <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm text-center md:text-left">
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
             Followers
           </p>
@@ -21,29 +52,27 @@ const DashboardClient = ({ data, currentUserId }: any) => {
             {stats.followers}
           </h3>
         </div>
-        <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
+
+        <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm text-center md:text-left">
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
             Following
           </p>
           <h3 className="text-3xl font-black text-gray-900">
-            {stats.following}
+            {stats.followings}
           </h3>
         </div>
+
+        {/* Action Button */}
         <Link
           href="/dashboard/create-post"
-          className="col-span-2 bg-[#5865F2] p-6 rounded-[2rem] shadow-lg shadow-[#5865F2]/20 flex items-center justify-between group hover:scale-[1.02] transition-transform"
+          className="bg-[#5865F2] p-6 rounded-[2rem] shadow-lg shadow-[#5865F2]/20 flex items-center justify-between group hover:scale-[1.02] transition-all"
         >
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-white/70 mb-1">
-              New Snippet
-            </p>
-            <h3 className="text-xl font-black text-white">
-              Create Something New
-            </h3>
-          </div>
           <div className="bg-white/20 p-3 rounded-2xl text-white">
             <Plus size={24} />
           </div>
+          <h3 className="text-sm font-black text-white uppercase tracking-tighter">
+            New Snippet
+          </h3>
         </Link>
       </div>
 

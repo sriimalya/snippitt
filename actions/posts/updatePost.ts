@@ -11,6 +11,7 @@ import {
   changeFileVisibility,
   deleteFile,
   extractKeyFromUrl,
+  moveFileToTrash,
 } from "@/lib/aws_s3";
 
 // Schema for image data in update
@@ -113,21 +114,41 @@ export async function updatePost(input: UpdatePostInput): Promise<{
     );
 
     // Process new images (move from temp to permanent)
+    // ... inside updatePost.ts
     const processedNewImages = await Promise.all(
       newImages.map(async (img) => {
         try {
           if (img.url.includes("/uploads/")) {
             return { ...img, url: cleanUrl(img.url) };
           }
+
           const tempKey = extractKeyFromUrl(img.url);
           const newUrl = await changeFileVisibility(tempKey);
           return { ...img, url: cleanUrl(newUrl) };
-        } catch (error) {
-          console.error("Failed to process image:", img.url, error);
-          throw new Error(`Failed to process image: ${img.url}`);
+        } catch (error: any) {
+          // If S3 says the file is gone, it's because Phase 1 succeeded
+          // but the DB failed previously. Use the current URL.
+          if (error.message === "SOURCE_MISSING") {
+            return { ...img, url: cleanUrl(img.url) };
+          }
+          throw error;
         }
       }),
     );
+
+    // Optional: Change deletedImages cleanup to use moveFileToTrash
+    await Promise.allSettled(
+      deletedImages.map(async (img) => {
+        try {
+          const key = extractKeyFromUrl(img.url);
+          // Use trash instead of permanent delete for safety
+          await moveFileToTrash(key);
+        } catch (error) {
+          console.error("Failed to move image to trash:", img.url, error);
+        }
+      }),
+    );
+    // ...
 
     // Delete removed images from S3
     await Promise.allSettled(
@@ -279,7 +300,7 @@ export async function updatePost(input: UpdatePostInput): Promise<{
       })),
       user: {
         id: updatedPost.userId,
-        username: session.user.username || "", 
+        username: session.user.username || "",
       },
       tags: updatedPost.tags.map((t) => t.tag.name),
       _count: {

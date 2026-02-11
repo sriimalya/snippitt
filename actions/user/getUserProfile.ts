@@ -4,14 +4,28 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-providers";
 import { extractKeyFromUrl, generatePresignedViewUrl } from "@/lib/aws_s3";
-import { Post } from "@/schemas/post";
-import { Collection } from "@/types";
 
-interface GetProfileParams {
-  profileId: string;
+/**
+ * Reusable helper to handle both S3 and External (Google) URLs
+ */
+async function getValidImageUrl(url: string | null | undefined) {
+  if (!url) return null;
+  // If it's a Google URL or a full external link, return as is
+  const isExternal =
+    url.includes("googleusercontent.com") ||
+    (url.includes("http") && !url.includes("amazonaws.com"));
+  if (isExternal) return url;
+
+  try {
+    const key = extractKeyFromUrl(url);
+    return await generatePresignedViewUrl(key);
+  } catch (error) {
+    console.error("S3 Signing failed for URL:", url);
+    return url; // Fallback
+  }
 }
 
-export async function getUserProfile({ profileId }: GetProfileParams) {
+export async function getUserProfile({ profileId }: { profileId: string }) {
   try {
     const session = await getServerSession(authOptions);
     const currentUserId = session?.user?.id;
@@ -23,7 +37,7 @@ export async function getUserProfile({ profileId }: GetProfileParams) {
       select: {
         id: true,
         username: true,
-        avatar: true, // This is the raw S3 URL/Key
+        avatar: true,
         bio: true,
         createdAt: true,
         _count: {
@@ -47,22 +61,10 @@ export async function getUserProfile({ profileId }: GetProfileParams) {
       return { success: false, message: "User not found", code: "NOT_FOUND" };
     }
 
-    // --- NEW: Sign the User Avatar URL ---
-    let signedAvatar = user.avatar;
-    if (user.avatar) {
-      try {
-        const avatarKey = extractKeyFromUrl(user.avatar);
-        signedAvatar = await generatePresignedViewUrl(avatarKey);
-      } catch (e) {
-        console.error("Error signing avatar:", e);
-        // Fallback to original if signing fails
-      }
-    }
-
     // 2. Content Visibility Logic
     const isFollowing = user.followers && user.followers.length > 0;
     const visibilityFilter = isOwner
-      ? {} 
+      ? {}
       : {
           isDraft: false,
           OR: [
@@ -85,12 +87,8 @@ export async function getUserProfile({ profileId }: GetProfileParams) {
           images: { where: { isCover: true }, take: 1 },
           tags: { include: { tag: true } },
           _count: { select: { likes: true, comments: true, savedBy: true } },
-          likes: currentUserId
-            ? { where: { userId: currentUserId }, select: { userId: true } }
-            : false,
-          savedBy: currentUserId
-            ? { where: { userId: currentUserId }, select: { userId: true } }
-            : false,
+          likes: currentUserId ? { where: { userId: currentUserId } } : false,
+          savedBy: currentUserId ? { where: { userId: currentUserId } } : false,
         },
         orderBy: { createdAt: "desc" },
         take: 5,
@@ -106,52 +104,53 @@ export async function getUserProfile({ profileId }: GetProfileParams) {
       }),
     ]);
 
-    // 4. Transform and Sign URLs for Posts
-    const posts: Post[] = await Promise.all(
-      rawPosts.map(async (p) => {
-        let signedUrl = null;
-        const cover = p.images[0];
-        if (cover?.url) {
-          signedUrl = await generatePresignedViewUrl(extractKeyFromUrl(cover.url));
-        }
-        return {
-          ...p,
-          visibility: p.visibility as any,
-          coverImage: signedUrl,
-          images: p.images.map((img) => ({
-            ...img,
-            url: signedUrl || img.url,
-          })),
-          tags: p.tags.map((t) => t.tag.name),
-          isLiked: currentUserId ? p.likes.length > 0 : false,
-          isSaved: currentUserId ? p.savedBy.length > 0 : false,
-          linkTo: `/explore/post/${p.id}`,
-        };
-      }),
-    );
+    // 4. Transform and Sign Everything (Avatar, Posts, Collections)
+    const [signedProfileAvatar, posts, collections] = await Promise.all([
+      getValidImageUrl(user.avatar), // Main Profile Avatar
 
-    // 5. Transform and Sign URLs for Collections
-    const collections: Collection[] = await Promise.all(
-      rawCollections.map(async (c) => {
-        let signedCover = null;
-        if (c.coverImage) {
-          signedCover = await generatePresignedViewUrl(extractKeyFromUrl(c.coverImage));
-        }
-        return {
-          ...c,
-          visibility: c.visibility as any,
-          coverImage: signedCover,
-          _count: { posts: c._count.posts },
-        };
-      }),
-    );
+      Promise.all(
+        rawPosts.map(async (p) => {
+          const cover = p.images[0];
+          const signedCoverUrl = await getValidImageUrl(cover?.url);
+          const signedAuthorAvatar = await getValidImageUrl(p.user.avatar); // Post Author Avatar
+
+          return {
+            ...p,
+            visibility: p.visibility as any,
+            coverImage: signedCoverUrl,
+            user: { ...p.user, avatar: signedAuthorAvatar },
+            tags: p.tags.map((t) => t.tag.name),
+            isLiked: currentUserId ? p.likes.length > 0 : false,
+            isSaved: currentUserId ? p.savedBy.length > 0 : false,
+            linkTo: `/post/${p.id}`,
+          };
+        }),
+      ),
+
+      Promise.all(
+        rawCollections.map(async (c) => {
+          const signedCollectionCover = await getValidImageUrl(c.coverImage);
+          const signedCollectionAuthorAvatar = await getValidImageUrl(
+            c.user.avatar,
+          );
+
+          return {
+            ...c,
+            visibility: c.visibility as any,
+            coverImage: signedCollectionCover,
+            user: { ...c.user, avatar: signedCollectionAuthorAvatar },
+            _count: { posts: c._count.posts },
+          };
+        }),
+      ),
+    ]);
 
     return {
       success: true,
       data: {
         profile: {
           ...user,
-          avatar: signedAvatar, // Use the signed version
+          avatar: signedProfileAvatar,
           isFollowing: !!isFollowing,
           isOwner,
         },

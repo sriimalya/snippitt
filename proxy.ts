@@ -4,19 +4,31 @@ import type { NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const token = await getToken({ req: request , secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
 
-  // Log the emailVerified property from the token
-  console.log("Token emailVerified:", token?.emailVerified);
-
-  // Public routes
-  const publicRoutes = ["/", "/auth/sign-in", "/auth/sign-up", "/auth/verify-email","/contact","/about" ,"/privacy-policy", "/auth/forgot-password"];
-  const isPublicRoute = publicRoutes.some(route => 
-    pathname === route || pathname.startsWith(route + "/")
+  const publicRoutes = [
+    "/",
+    "/auth/sign-in",
+    "/auth/sign-up",
+    "/auth/verify-email",
+    "/contact",
+    "/about",
+    "/privacy-policy",
+    "/auth/forgot-password",
+  ];
+  const isPublicRoute = publicRoutes.some(
+    (route) => pathname === route || pathname.startsWith(route + "/"),
   );
 
   // 1. Redirect logged-in users away from auth pages
-  if (token && (pathname.startsWith("/auth/sign-in") || pathname.startsWith("/auth/sign-up"))) {
+  if (
+    token &&
+    (pathname.startsWith("/auth/sign-in") ||
+      pathname.startsWith("/auth/sign-up"))
+  ) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
@@ -29,19 +41,21 @@ export async function proxy(request: NextRequest) {
   if (token) {
     // Force token refresh by adding a timestamp query parameter
     //const shouldRefreshToken = request.nextUrl.searchParams.get('refreshToken');
-    
+
     // If email is verified, redirect away from verification page
     if (token.emailVerified && pathname.startsWith("/auth/verify-email")) {
       return NextResponse.redirect(new URL("/", request.url));
     }
-    
+
     // If email is NOT verified, redirect to verification page (except for allowed routes)
-    if (!token.emailVerified && 
-        !isPublicRoute && 
-        !pathname.startsWith("/api") && 
-        pathname !== "/") {
+    if (
+      !token.emailVerified &&
+      !isPublicRoute &&
+      !pathname.startsWith("/api") &&
+      pathname !== "/"
+    ) {
       const verifyUrl = new URL("/auth/verify-email", request.url);
-      verifyUrl.searchParams.set('email', token.email || '');
+      verifyUrl.searchParams.set("email", token.email || "");
       return NextResponse.redirect(verifyUrl);
     }
   }

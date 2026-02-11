@@ -30,7 +30,7 @@ const Snippet = ({
     const inputDate = new Date(date);
     if (isNaN(inputDate.getTime())) return "";
 
-    
+  
     const now = new Date().getTime(); 
 
     const seconds = Math.floor((now - inputDate.getTime()) / 1000);
@@ -109,7 +109,7 @@ const Snippet = ({
                   {isCurrentUsersPost && (
                     <>
                       <Link 
-                        href={`/posts/${post.id}/edit`}
+                        href={`/post/${post.id}/edit`}
                         className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-primary/10 hover:text-primary transition"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -159,6 +159,7 @@ const Snippet = ({
                   alt={post.user.username}
                   className="w-full h-full object-cover"
                   width={32}
+                  unoptimized={true}
                   height={32}
                 />
               ) : (

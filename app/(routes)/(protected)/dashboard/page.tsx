@@ -15,6 +15,7 @@ export default async function DashboardPage() {
 
   // 2. Fetch all sections (Stats, Posts, Drafts, Collections)
   const result = await getDashboardData();
+  
 
   if (!result.success) {
     return (

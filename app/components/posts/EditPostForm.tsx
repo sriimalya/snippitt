@@ -290,10 +290,7 @@ const EditPostForm = () => {
       const uploadPromises = filesToUpload.map(async (fileData) => {
         try {
           // Get presigned URL
-          console.log("File name type:", typeof fileData.file!.name);
-          console.log("File name value:", fileData.file!.name);
-          console.log("File type type:", typeof fileData.file!.type);
-          console.log("File type value:", fileData.file!.type);
+
           const result = await generatePresignedUrlAction({
             fileName: fileData.file!.name,
             fileType: fileData.file!.type,
@@ -449,7 +446,7 @@ const EditPostForm = () => {
         // Prepare images payload
         const images = files.map((file) => ({
           // url: file.s3Url || file.preview,
-          url: file.isUploaded ? (file.s3Url || file.preview) : file.preview,
+          url: file.isUploaded ? file.s3Url || file.preview : file.preview,
           description: file.description,
           isCover: file.isCover,
           existingImageId: file.existingImageId,

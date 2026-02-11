@@ -13,8 +13,6 @@ import CommentSection from "../comment/CommentSection";
 
 const PostDetailClient = ({ post, currentUserId }: any) => {
   const router = useRouter();
-
-  // State lifting for live comment count synchronization
   const [commentCount, setCommentCount] = useState(post._count.comments || 0);
   const [formattedDate, setFormattedDate] = React.useState<string>("");
   const handleCountChange = (delta: number) =>

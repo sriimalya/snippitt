@@ -7,11 +7,11 @@ import { revalidatePath } from "next/cache";
 import { 
   extractKeyFromUrl, 
   deleteFile, 
-  changeFileVisibility 
+  changeFileVisibility, 
+  moveFileToTrash
 } from "@/lib/aws_s3";
 import { z } from "zod";
 
-// Validation Schema
 const UpdateCollectionSchema = z.object({
   collectionId: z.string(),
   name: z.string().min(1, "Name is required").max(50),
@@ -50,31 +50,38 @@ export async function updateCollection(input: z.infer<typeof UpdateCollectionSch
     };
 
     // 2. Handle Cover Image S3 Logic
+    // 2. Handle Cover Image S3 Logic
     if (data.coverImage && data.coverImage !== existingCollection.coverImage) {
       try {
-        // If the new image is in the 'temp' folder, move it to 'uploads'
+        // If the new image is in the 'temp' folder, move it to 'uploads' (and 'trash')
         if (data.coverImage.includes("/temp/")) {
           const tempKey = extractKeyFromUrl(data.coverImage);
+          
+          // This call is now idempotent thanks to your lib/aws_s3.ts changes
           const permanentUrl = await changeFileVisibility(tempKey);
           
-          // Use the clean URL (no query params) for the database
           updatePayload.coverImage = permanentUrl.split("?")[0];
 
-          // If there was an old custom cover image, delete it from S3
-          if (existingCollection.coverImage) {
+          // Safely handle old cover image cleanup
+          if (existingCollection.coverImage && existingCollection.coverImage.includes("uploads/")) {
             const oldKey = extractKeyFromUrl(existingCollection.coverImage);
-            // Optional: Only delete if it's not a default placeholder
-            if (oldKey.includes("uploads/")) {
-                await deleteFile(oldKey);
-            }
+            // Use the trash helper instead of permanent deletion
+            await moveFileToTrash(oldKey);
           }
         } else {
-            // If it's already a permanent URL (not changed), just keep it
-            updatePayload.coverImage = data.coverImage;
+          // If it's already a permanent URL, just sync the sanitized version
+          updatePayload.coverImage = data.coverImage.split("?")[0];
         }
-      } catch (error) {
-        console.error("S3 Processing Error:", error);
-        // We continue with the database update even if cleanup fails
+      } catch (error: any) {
+        // Handle the case where a previous failed DB update already moved the file
+        if (error.message === "SOURCE_MISSING") {
+          console.warn("Cover image already moved from temp, using current URL as-is");
+          updatePayload.coverImage = data.coverImage.split("?")[0];
+        } else {
+          console.error("Critical S3 Processing Error:", error);
+          // Optional: You can choose to throw here if you want to block the DB update on S3 failure
+          // throw error; 
+        }
       }
     }
 

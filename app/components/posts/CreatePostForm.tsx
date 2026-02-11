@@ -107,10 +107,10 @@ const CreatePostForm = () => {
       if (res.success) {
         toast.success("🎉 Draft created successfully! Ready for images.");
 
-        // Redirect to the newly created post edit page
+      
         if (res.data?.id) {
           setTimeout(() => {
-            router.push(`/my-posts/${res.data.id}`);
+            router.push(`/post/${res.data.id}/edit`);
           }, 200);
         }
       } else {

@@ -5,6 +5,25 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-providers";
 import { extractKeyFromUrl, generatePresignedViewUrl } from "@/lib/aws_s3";
 
+/**
+ * Helper to handle both S3 and External (Google) URLs
+ */
+async function getValidImageUrl(url: string | null | undefined) {
+  if (!url) return null;
+  // If it's a Google URL or a full external link, return as is
+  const isExternal =
+    url.includes("googleusercontent.com") ||
+    (url.includes("http") && !url.includes("amazonaws.com"));
+  if (isExternal) return url;
+
+  try {
+    const key = extractKeyFromUrl(url);
+    return await generatePresignedViewUrl(key);
+  } catch (error) {
+    return url;
+  }
+}
+
 export async function getPostById(postId: string) {
   try {
     const session = await getServerSession(authOptions);
@@ -25,26 +44,18 @@ export async function getPostById(postId: string) {
       return { success: false, message: "Post not found", code: "NOT_FOUND" };
     }
 
+    // --- Access Control Logic (Keep your existing checks here) ---
     const isOwner = currentUserId === post.user.id;
-
     if (!isOwner) {
-      if (post.visibility === "PRIVATE") {
-        return {
-          success: false,
-          message: "This post is private",
-          code: "FORBIDDEN",
-        };
-      }
-
+      if (post.visibility === "PRIVATE")
+        return { success: false, message: "Private", code: "FORBIDDEN" };
       if (post.visibility === "FOLLOWERS") {
-        if (!currentUserId) {
+        if (!currentUserId)
           return {
             success: false,
-            message: "Please log in to view this post",
+            message: "Login required",
             code: "UNAUTHORIZED",
           };
-        }
-
         const isFollowing = await prisma.follow.findUnique({
           where: {
             followerId_followingId: {
@@ -53,34 +64,32 @@ export async function getPostById(postId: string) {
             },
           },
         });
-
-        if (!isFollowing) {
+        if (!isFollowing)
           return {
             success: false,
-            message: "This post is for followers only",
+            message: "Followers only",
             code: "FORBIDDEN",
           };
-        }
       }
     }
 
-    const imageKeys = post.images.map((img) => extractKeyFromUrl(img.url));
-    const avatarKey = post.user.avatar
-      ? extractKeyFromUrl(post.user.avatar)
-      : null;
+    // --- SMART SIGNING LOGIC ---
 
-    const [signedImages, signedAvatar] = await Promise.all([
-      Promise.all(imageKeys.map((key) => generatePresignedViewUrl(key))),
-      avatarKey ? generatePresignedViewUrl(avatarKey) : null,
-    ]);
+    // 1. Sign all post images (usually S3)
+    const signedImages = await Promise.all(
+      post.images.map(async (img) => ({
+        ...img,
+        url: await getValidImageUrl(img.url),
+      })),
+    );
+
+    // 2. Sign author avatar (Handles Google vs S3)
+    const signedAvatar = await getValidImageUrl(post.user.avatar);
 
     const transformedPost = {
       ...post,
       user: { ...post.user, avatar: signedAvatar },
-      images: post.images.map((img, idx) => ({
-        ...img,
-        url: signedImages[idx],
-      })),
+      images: signedImages,
       isLiked: currentUserId ? post.likes.length > 0 : false,
       isSaved: currentUserId ? post.savedBy.length > 0 : false,
     };

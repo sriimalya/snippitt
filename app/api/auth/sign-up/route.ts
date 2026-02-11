@@ -12,13 +12,10 @@ export async function POST(request: Request) {
       ...body,
       password: "[REDACTED]",
     };
-    console.log("Request body:", safeBody);
 
     // Validate the request body using Zod
     const validation = SignupSchema.safeParse(body);
     if (!validation.success) {
-      console.log("Validation errors:", validation.error.issues);
-
       // Transform Zod errors into user-friendly messages
       const userFriendlyErrors = validation.error.issues.map((err) => ({
         field: err.path.join("."),
@@ -32,7 +29,7 @@ export async function POST(request: Request) {
           code: "VALIDATION_ERROR",
           errors: userFriendlyErrors,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -57,7 +54,7 @@ export async function POST(request: Request) {
             "A user with this email already exists. Please use a different email.",
           code: "EMAIL_CONFLICT",
         },
-        { status: 409 }
+        { status: 409 },
       );
     }
     if (existingUser?.username === username) {
@@ -68,7 +65,7 @@ export async function POST(request: Request) {
             "This username is already taken. Please choose a different one.",
           code: "USERNAME_CONFLICT",
         },
-        { status: 409 }
+        { status: 409 },
       );
     }
     //Might Need to Delete if Null Values Start Equalling With Each Other
@@ -80,7 +77,7 @@ export async function POST(request: Request) {
             "This Phone Number is already there. Please choose a different one.",
           code: "PHONENUMBER_CONFLICT",
         },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
@@ -93,7 +90,7 @@ export async function POST(request: Request) {
         email,
         username,
         password: hashedPassword,
-        phone: phone 
+        phone: phone,
       },
     });
 
@@ -110,7 +107,7 @@ export async function POST(request: Request) {
         message: "User created successfully.",
         user: userResponse,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Signup error:", error);
@@ -120,7 +117,7 @@ export async function POST(request: Request) {
         message: "An unexpected error occurred. Please try again later.",
         code: "INTERNAL_SERVER_ERROR",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
