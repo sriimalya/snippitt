@@ -28,6 +28,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-dropzone": "^14.3.8",
+    "react-intersection-observer": "^10.0.2",
     "react-phone-input-2": "^2.15.1",
     "sonner": "^2.0.7",
     "zod": "^4.3.5"
