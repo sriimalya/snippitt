@@ -1,21 +1,46 @@
 "use client";
 
-import React from "react"; // Added useMemo
+import React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Collection } from "@/types";
-import { Eye, Lock, Users, FileText, ChevronRight } from "lucide-react";
+import {
+  Eye,
+  Lock,
+  Users,
+  FileText,
+  ChevronRight,
+  Folder,
+  Edit3,
+} from "lucide-react";
 
-const DEFAULT_COVER_IMAGE = "https://thumbs.dreamstime.com/b/book-open-cover-reveals-tree-growing-its-pages-bathed-radiant-light-ideal-fantasy-nature-themed-book-354676529.jpg";
+const DEFAULT_COVER_IMAGE =
+  "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop";
 
-// 1. Move helper OUTSIDE the component to keep the component pure
+// Design System Tokens
+const styles = {
+  card: "group relative flex flex-col overflow-hidden rounded-[1.25rem] border border-neutral-200/70 bg-white transition-all duration-300 hover:border-neutral-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1",
+  coverImage: "relative h-44 w-full overflow-hidden bg-neutral-100",
+  imageOverlay:
+    "absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent",
+  badge:
+    "inline-flex items-center gap-1.5 rounded-lg bg-white/90 backdrop-blur-md px-2.5 py-1 shadow-sm border border-white/50",
+  badgeText:
+    "text-[10px] font-semibold uppercase tracking-wider text-neutral-700",
+  avatar:
+    "relative h-7 w-7 overflow-hidden rounded-full border border-neutral-200 shrink-0",
+  username: "text-xs font-medium text-neutral-500 truncate",
+  title:
+    "text-lg font-bold tracking-tight text-neutral-900 line-clamp-1 transition-colors group-hover:text-[#5865F2]",
+  description: "text-sm leading-relaxed text-neutral-600 line-clamp-2",
+  footer: "flex items-center justify-between border-t border-neutral-100 pt-3",
+  timestamp: "text-xs font-medium text-neutral-400",
+  link: "inline-flex items-center gap-1 text-xs font-semibold text-[#5865F2] transition-all group-hover:gap-1.5",
+} as const;
+
 function getTimeAgo(date: string | Date): string {
   const inputDate = new Date(date);
   if (isNaN(inputDate.getTime())) return "";
-  
-  // Note: While this still uses Date.now(), moving it to a 
-  // formatting step or memoizing the component's output 
-  // is the standard way to handle this in React.
   const seconds = Math.floor((Date.now() - inputDate.getTime()) / 1000);
   if (seconds < 5) return "Just now";
   if (seconds < 60) return `${seconds}s`;
@@ -24,8 +49,7 @@ function getTimeAgo(date: string | Date): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return inputDate.toLocaleDateString(); // Fallback for old dates
+  return days < 7 ? `${days}d` : inputDate.toLocaleDateString();
 }
 
 interface CollectionsProps {
@@ -43,102 +67,145 @@ export const Collections = ({
   compact = false,
   isOwner = false,
 }: CollectionsProps) => {
-
   if (!collections || collections.length === 0) {
     return (
-      <div className="text-center py-12 px-4 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
-          <FileText className="w-8 h-8 text-gray-400" />
+      <div className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50/50 p-20 text-center">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(88,101,242,0.05),transparent_70%)]" />
+        <div className="relative space-y-6">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-xl bg-white shadow-sm border border-neutral-200">
+            <Folder size={32} className="text-neutral-300" strokeWidth={1.5} />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-neutral-900">
+              No Collections Yet
+            </h3>
+            <p className="text-sm text-neutral-500 max-w-sm mx-auto">
+              Start organizing your snippets by creating your first collection.
+            </p>
+          </div>
+          <Link
+            href="/dashboard/collections/new"
+            className="inline-flex items-center gap-2 rounded-full bg-[#5865F2] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#5865F2]/20 transition-all hover:bg-[#4752C4] hover:shadow-xl hover:shadow-[#5865F2]/30 hover:-translate-y-0.5"
+          >
+            Create Collection
+            <ChevronRight size={16} />
+          </Link>
         </div>
-        <h3 className="text-lg font-semibold text-gray-700 mb-2">No collections yet</h3>
-        <Link
-          href="/dashboard/collections/new"
-          className="mt-4 inline-block px-6 py-2 bg-[#5865F2] text-white rounded-lg font-medium hover:bg-[#5865F2]/90 transition-colors text-sm"
-        >
-          Create Collection
-        </Link>
       </div>
     );
   }
 
   const getVisibilityIcon = (visibility: string) => {
     switch (visibility) {
-      case "PUBLIC": return <Eye className="w-3.5 h-3.5" />;
-      case "PRIVATE": return <Lock className="w-3.5 h-3.5" />;
-      case "FOLLOWERS": return <Users className="w-3.5 h-3.5" />;
-      default: return <Eye className="w-3.5 h-3.5" />;
+      case "PUBLIC":
+        return <Eye className="w-3.5 h-3.5" />;
+      case "PRIVATE":
+        return <Lock className="w-3.5 h-3.5" />;
+      case "FOLLOWERS":
+        return <Users className="w-3.5 h-3.5" />;
+      default:
+        return <Eye className="w-3.5 h-3.5" />;
     }
   };
 
-  const getGradientClass = (index: number) => {
-    const gradients = [
-      "from-[#6366f1] via-[#818cf8] to-[#6366f1]",
-      "from-[#10b981] via-[#34d399] to-[#10b981]",
-      "from-[#f59e0b] via-[#fbbf24] to-[#f59e0b]",
-    ];
-    return gradients[index % gradients.length];
-  };
-
   return (
-    <div className={variant === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-3"}>
-      {collections.map((collection, index) => {
-        // Fix for postCount: Use the Prisma _count structure
+    <div
+      className={
+        variant === "grid"
+          ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
+          : "space-y-3"
+      }
+    >
+      {collections.map((collection) => {
         const postCount = collection._count?.posts ?? 0;
         const timeLabel = getTimeAgo(collection.createdAt);
 
         if (variant === "grid") {
           return (
-            <div
-              key={collection.id}
-              className={`relative group overflow-hidden rounded-xl transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border ${
-                showCoverImage ? "bg-white border-gray-200" : `bg-gradient-to-br ${getGradientClass(index)} text-white border-transparent`
-              } ${compact ? "p-4" : "p-5"}`}
-            >
-              <div className="relative h-32 mb-4 rounded-lg overflow-hidden bg-gray-100">
+            <div key={collection.id} className={styles.card}>
+              {/* Cover Image */}
+              <div className={styles.coverImage}>
                 <Image
                   src={collection.coverImage || DEFAULT_COVER_IMAGE}
                   alt={collection.name}
                   fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-110"
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  unoptimized
                 />
+                <div className={styles.imageOverlay} />
+
+                {/* Floating Badges */}
+                <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
+                  <div className={styles.badge}>
+                    {getVisibilityIcon(collection.visibility)}
+                    <span className={styles.badgeText}>
+                      {collection.visibility}
+                    </span>
+                  </div>
+
+                  {isOwner && (
+                    <Link
+                      href={`/dashboard/collections/edit/${collection.id}`}
+                      className="flex items-center justify-center rounded-lg bg-white/90 backdrop-blur-md p-2 shadow-sm border border-white/50 opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-110"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Edit3 size={14} className="text-neutral-700" />
+                    </Link>
+                  )}
+                </div>
+
+                <div className="absolute bottom-3 right-3">
+                  <div className={styles.badge}>
+                    <FileText size={12} className="text-[#5865F2]" />
+                    <span className="text-xs font-semibold text-neutral-900">
+                      {postCount}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1 min-w-0">
-                   <h4 className={`font-bold truncate mb-1 ${compact ? "text-base" : "text-lg"}`}>
-                      #{collection.name}
-                    </h4>
-                  <p className={`text-sm line-clamp-2 opacity-90 ${showCoverImage ? "text-gray-600" : "text-white"}`}>
-                    {collection.description || "No description"}
+              {/* Content */}
+              <div className="flex flex-1 flex-col p-5 space-y-3">
+                {/* Author */}
+                <div className="flex items-center gap-2.5">
+                  <div className={styles.avatar}>
+                    {collection.user?.avatar ? (
+                      <Image
+                        src={collection.user.avatar}
+                        alt={collection.user.username}
+                        fill
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-xs font-semibold text-neutral-500">
+                        {collection.user?.username?.[0].toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <span className={styles.username}>
+                    @{collection.user?.username}
+                  </span>
+                </div>
+
+                {/* Title & Description */}
+                <div className="space-y-2 flex-1">
+                  <h4 className={styles.title}>#{collection.name}</h4>
+                  <p className={styles.description}>
+                    {collection.description ||
+                      "No description provided for this collection."}
                   </p>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between mt-4">
-                <div className="flex items-center gap-3">
-                  <div className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${
-                    showCoverImage ? "bg-gray-100 text-gray-700" : "bg-white/20 text-white"
-                  }`}>
-                    {getVisibilityIcon(collection.visibility)}
-                    <span className="capitalize">{collection.visibility.toLowerCase()}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-xs opacity-80">
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>{postCount}</span>
-                  </div>
-                </div>
-                <div className="text-xs opacity-70">{timeLabel}</div>
-              </div>
-
-              <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-2 px-4">
-                {isOwner && (
-                  <Link href={`/dashboard/collections/edit/${collection.id}`} className="flex-1 py-2 bg-white text-gray-900 rounded-lg font-bold text-center text-xs">
-                    Edit
+                {/* Footer */}
+                <div className={styles.footer}>
+                  <span className={styles.timestamp}>{timeLabel}</span>
+                  <Link
+                    href={`/collection/${collection.id}`}
+                    className={styles.link}
+                  >
+                    View <ChevronRight size={14} strokeWidth={2.5} />
                   </Link>
-                )}
-                <Link href={`/explore/collection/${collection.id}`} className="flex-1 py-2 bg-[#5865F2] text-white rounded-lg font-bold text-center text-xs">
-                  View
-                </Link>
+                </div>
               </div>
             </div>
           );
@@ -149,26 +216,61 @@ export const Collections = ({
           <Link
             key={collection.id}
             href={`/explore/collection/${collection.id}`}
-            className="flex items-center gap-4 p-4 rounded-xl transition-all duration-200 bg-white border border-gray-100 hover:border-[#5865F2]"
+            className="group flex items-center gap-5 rounded-xl border border-neutral-200/70 bg-white p-4 transition-all duration-300 hover:border-neutral-300 hover:shadow-lg hover:shadow-neutral-200/50"
           >
-            <div className={`relative flex-shrink-0 rounded-lg overflow-hidden ${compact ? "w-12 h-12" : "w-16 h-16"}`}>
-              {collection.coverImage ? (
-                <Image src={collection.coverImage} alt={collection.name} fill className="object-cover" />
-              ) : (
-                <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getGradientClass(index)}`}>
-                  <span className="text-white font-bold">{collection.name.charAt(0).toUpperCase()}</span>
-                </div>
-              )}
+            {/* Thumbnail */}
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg">
+              <Image
+                src={collection.coverImage || DEFAULT_COVER_IMAGE}
+                alt={collection.name}
+                fill
+                className="object-cover transition-transform duration-500 group-hover:scale-110"
+                unoptimized
+              />
             </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="font-bold text-gray-900 truncate">#{collection.name}</h4>
-              <div className="flex items-center gap-3 text-[11px] text-gray-400 font-medium">
-                <span className="flex items-center gap-1"><FileText className="w-3 h-3" />{postCount} posts</span>
-                <span>•</span>
-                <span>{timeLabel}</span>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center gap-2 text-xs">
+                <div className="inline-flex items-center gap-1.5 text-[#5865F2]">
+                  {getVisibilityIcon(collection.visibility)}
+                  <span className="font-semibold uppercase tracking-wider">
+                    {collection.visibility}
+                  </span>
+                </div>
+                <span className="text-neutral-300">•</span>
+                <span className="font-medium text-neutral-400">
+                  {timeLabel}
+                </span>
+              </div>
+
+              <h4 className="truncate text-base font-bold tracking-tight text-neutral-900 transition-colors group-hover:text-[#5865F2]">
+                #{collection.name}
+              </h4>
+
+              <p className="truncate text-sm text-neutral-500">
+                {collection.description || "No description"}
+              </p>
+            </div>
+
+            {/* Stats & Action */}
+            <div className="flex shrink-0 items-center gap-6">
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex items-center gap-1.5 rounded-lg bg-neutral-50 px-3 py-1.5">
+                  <FileText size={14} className="text-[#5865F2]" />
+                  <span className="text-sm font-semibold text-neutral-900">
+                    {postCount}
+                  </span>
+                </div>
+                <span className="text-[10px] font-medium text-neutral-400 uppercase tracking-wider">
+                  Snippets
+                </span>
+              </div>
+
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-400 transition-all group-hover:bg-[#5865F2] group-hover:text-white group-hover:scale-110">
+                <ChevronRight size={18} strokeWidth={2.5} />
               </div>
             </div>
-            <ChevronRight className="w-4 h-4 text-gray-300" />
           </Link>
         );
       })}
