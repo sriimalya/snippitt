@@ -606,7 +606,7 @@ const EditPostForm = () => {
           </p>
           <Button
             onClick={() => router.push("/my-posts")}
-            variant="theme-primary"
+            variant="primary"
           >
             Back to My Posts
           </Button>
@@ -659,7 +659,7 @@ const EditPostForm = () => {
 
               <Button
                 onClick={() => handleSubmit(false)}
-                variant="theme-primary"
+                variant="primary"
                 size="sm"
                 disabled={isSubmitting}
                 icon={
@@ -719,7 +719,7 @@ const EditPostForm = () => {
                   <Button
                     onClick={() => setViewMode("details")}
                     variant={
-                      viewMode === "details" ? "theme-primary" : "outline"
+                      viewMode === "details" ? "primary" : "outline"
                     }
                     size="sm"
                     icon={<FileText className="w-4 h-4" />}
@@ -728,7 +728,7 @@ const EditPostForm = () => {
                   </Button>
                   <Button
                     onClick={() => setViewMode("media")}
-                    variant={viewMode === "media" ? "theme-primary" : "outline"}
+                    variant={viewMode === "media" ? "primary" : "outline"}
                     size="sm"
                     icon={<ImageIcon className="w-4 h-4" />}
                   >
@@ -741,7 +741,7 @@ const EditPostForm = () => {
                     <Button
                       onClick={() => setFileViewMode("grid")}
                       variant={
-                        fileViewMode === "grid" ? "theme-primary" : "outline"
+                        fileViewMode === "grid" ? "primary" : "outline"
                       }
                       size="sm"
                       icon={<Grid className="w-4 h-4" />}
@@ -751,7 +751,7 @@ const EditPostForm = () => {
                     <Button
                       onClick={() => setFileViewMode("list")}
                       variant={
-                        fileViewMode === "list" ? "theme-primary" : "outline"
+                        fileViewMode === "list" ? "primary" : "outline"
                       }
                       size="sm"
                       icon={<List className="w-4 h-4" />}
@@ -993,7 +993,7 @@ const EditPostForm = () => {
                       {files.some((f) => !f.isUploaded) && (
                         <Button
                           onClick={uploadFiles}
-                          variant="theme-primary"
+                          variant="primary"
                           size="sm"
                           disabled={isUploading || isSubmitting}
                           icon={
@@ -1244,7 +1244,7 @@ const EditPostForm = () => {
               <div className="space-y-3">
                 <Button
                   onClick={() => handleSubmit(false)}
-                  variant="theme-primary"
+                  variant="primary"
                   className="w-full"
                   disabled={isSubmitting}
                   icon={
@@ -1275,7 +1275,7 @@ const EditPostForm = () => {
                         setSelectedVisibility("PUBLIC");
                         handleSubmit(false);
                       }}
-                      variant="custom-blue"
+                      variant="primary"
                       size="sm"
                       className="w-full"
                       disabled={isSubmitting}
@@ -1287,7 +1287,7 @@ const EditPostForm = () => {
                         setSelectedVisibility("FOLLOWERS");
                         handleSubmit(false);
                       }}
-                      variant="custom-blue"
+                      variant="primary"
                       size="sm"
                       className="w-full"
                       disabled={isSubmitting}
@@ -1438,7 +1438,7 @@ const EditPostForm = () => {
                 </Button>
                 <Button
                   onClick={handleDeletePost}
-                  variant="theme-primary"
+                  variant="primary"
                   className="flex-1"
                   icon={<Trash2 className="w-4 h-4" />}
                   disabled={isDeleting}

@@ -127,7 +127,7 @@ const AddCollectionButton: React.FC<AddCollectionButtonProps> = ({
                 />
                 <Button
                   size="sm"
-                  variant="theme-primary"
+                  variant="primary"
                   onClick={handleCreateNewCollection}
                   disabled={isCreating || !newCollectionName.trim()}
                 >

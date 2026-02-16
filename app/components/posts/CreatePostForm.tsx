@@ -478,7 +478,7 @@ const CreatePostForm = () => {
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                variant="theme-gradient"
+                variant="gradient"
                 size="lg"
                 className="min-w-[180px]"
               >

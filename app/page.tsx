@@ -146,7 +146,7 @@ export default function Page() {
             </Link>
 
             <Link href="/auth/sign-up">
-              <Button variant="custom-blue" size="md">
+              <Button variant="primary" size="lg">
                 Get Started
               </Button>
             </Link>
@@ -190,7 +190,7 @@ export default function Page() {
             <Link href="/auth/sign-up">
               <Button
                 type="button"
-                variant="gradient-blue"
+                variant="primary"
                 size="lg"
                 className="flex items-center justify-center gap-2"
               >
@@ -254,7 +254,7 @@ export default function Page() {
             into a personalized, searchable knowledge base.
           </p>
           <Link href="/auth/sign-up">
-            <Button type="button" variant="gradient-blue" size="lg">
+            <Button type="button" variant="primary" size="lg">
               Start Curating Now
             </Button>
           </Link>

@@ -27,5 +27,5 @@ export default async function DashboardPage() {
     );
   }
 
-  return <DashboardClient data={result.data} currentUserId={session.user.id} />;
+  return <DashboardClient data={result.data} currentUserId={session.user.id} currentUserName={session.user.username} />;
 }

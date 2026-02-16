@@ -101,7 +101,7 @@ export const Sidebar = ({ activeTab, setActiveTab, userId }: SidebarProps) => {
               <Link
                 href="/create-post"
                 className="flex flex-col items-center justify-center py-2 px-3 rounded-md transition-colors text-gray-600 hover:text-gray-900"
-                aria-label="Create Snippet"
+                aria-label="Create Post"
               >
                 <Plus className="w-7 h-7 p-1 bg-primary text-white rounded-full" />
               </Link>
@@ -169,11 +169,11 @@ export const Sidebar = ({ activeTab, setActiveTab, userId }: SidebarProps) => {
         <Link href="/create-post" className="w-full block">
           <Button
             type="button"
-            variant="custom-blue"
-            size="md"
-            className="w-full text-[15px] font-semibold"
+            variant="primary"
+            size="lg"
+            className="w-full text-[15px]"
           >
-            + Create Snippet
+            + Create Post
           </Button>
         </Link>
       </div>
