@@ -19,7 +19,7 @@ async function getValidImageUrl(url: string | null | undefined) {
     return await generatePresignedViewUrl(key);
   } catch (error) {
     console.error("S3 Signing failed for URL:", url, error);
-    return url; 
+    return url;
 
   }
 }
@@ -60,8 +60,16 @@ export async function getDashboardData() {
   const userId = session.user.id;
 
   try {
-    const [userData, recentPosts, drafts, collections] = await Promise.all([
-
+    const [
+      userData,
+      recentPosts,
+      drafts,
+      collections,
+      postsCount,
+      draftsCount,
+      collectionsCount,
+    ] = await Promise.all([
+      // USER BASIC STATS
       prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -70,18 +78,19 @@ export async function getDashboardData() {
         },
       }),
 
+      // RECENT POSTS
       prisma.post.findMany({
         where: { userId, isDraft: false },
         take: 3,
         orderBy: { createdAt: "desc" },
         include: {
           user: { select: { id: true, username: true, avatar: true } },
-          images: true, 
-
+          images: true,
           _count: { select: { likes: true, comments: true, savedBy: true } },
         },
       }),
 
+      // DRAFTS
       prisma.post.findMany({
         where: { userId, isDraft: true },
         take: 3,
@@ -93,6 +102,7 @@ export async function getDashboardData() {
         },
       }),
 
+      // COLLECTIONS
       prisma.collection.findMany({
         where: { userId },
         take: 3,
@@ -101,8 +111,24 @@ export async function getDashboardData() {
           _count: { select: { posts: true } },
         },
       }),
+
+      // TOTAL POSTS COUNT
+      prisma.post.count({
+        where: { userId, isDraft: false },
+      }),
+
+      // TOTAL DRAFTS COUNT
+      prisma.post.count({
+        where: { userId, isDraft: true },
+      }),
+
+      // TOTAL COLLECTION COUNT
+      prisma.collection.count({
+        where: { userId },
+      }),
     ]);
 
+    // SIGN IMAGES
     const [signedPosts, signedDrafts, signedDashboardAvatar] =
       await Promise.all([
         signPostImages(recentPosts),
@@ -114,12 +140,16 @@ export async function getDashboardData() {
       success: true,
       data: {
         stats: {
-          ...(userData?._count || { followers: 0, followings: 0 }),
+          followers: userData?._count?.followers ?? 0,
+          followings: userData?._count?.followings ?? 0,
+          postsCount,
+          draftsCount,
+          collectionsCount,
           avatar: signedDashboardAvatar,
         },
         recentPosts: signedPosts,
         drafts: signedDrafts,
-        collections: collections,
+        collections,
       },
     };
   } catch (error) {
