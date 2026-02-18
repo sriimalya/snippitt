@@ -9,8 +9,8 @@ import type { Post } from "@/schemas/post";
 import { extractKeyFromUrl, generatePresignedViewUrl } from "@/lib/aws_s3";
 
 interface GetMyPostsOptions {
-  page?: number; // Page number (starting from 1)
-  perPage?: number; // Posts per page (default 10)
+  page?: number;
+  perPage?: number;
   category?: string;
 }
 
@@ -47,18 +47,17 @@ export async function getMyPosts(options: GetMyPostsOptions = {}): Promise<{
     const page = options.page || 1;
     const skip = (page - 1) * perPage;
 
-    // Build where clause - only non-draft posts
+    // 1. Build where clause - fetching ALL posts for the owner
+    // Owners see their own PRIVATE, PUBLIC, FOLLOWERS, and DRAFT posts.
     const whereClause: any = {
       userId,
-      isDraft: false, // Exclude drafts
     };
 
-    // Filter by category if provided
     if (options.category) {
       whereClause.category = options.category;
     }
 
-    // Fetch posts with pagination and all necessary relations
+    // 2. Fetch data in parallel
     const [posts, totalPosts] = await Promise.all([
       prisma.post.findMany({
         where: whereClause,
@@ -71,15 +70,11 @@ export async function getMyPosts(options: GetMyPostsOptions = {}): Promise<{
             },
           },
           images: {
-            where: {
-              isCover: true, // Only fetch cover images for feed
-            },
+            where: { isCover: true },
             take: 1,
           },
           tags: {
-            include: {
-              tag: true,
-            },
+            include: { tag: true },
           },
           _count: {
             select: {
@@ -88,22 +83,13 @@ export async function getMyPosts(options: GetMyPostsOptions = {}): Promise<{
               savedBy: true,
             },
           },
-          // Check if current user has liked or saved each post
           likes: {
-            where: {
-              userId: userId,
-            },
-            select: {
-              userId: true,
-            },
+            where: { userId },
+            select: { userId: true },
           },
           savedBy: {
-            where: {
-              userId: userId,
-            },
-            select: {
-              userId: true,
-            },
+            where: { userId },
+            select: { userId: true },
           },
         },
         orderBy: {
@@ -117,103 +103,83 @@ export async function getMyPosts(options: GetMyPostsOptions = {}): Promise<{
       }),
     ]);
 
-    // Transform posts with signed URLs and engagement data
+    // 3. Parallel Processing for S3 URL Signing
+    // We process all posts simultaneously for better performance
+    const getSignedUrl = async (url: string | null | undefined) => {
+      if (!url) return null;
+      // Skip signing if it's a Google avatar or already a full external URL
+      const isExternal =
+        url.includes("googleusercontent.com") ||
+        (url.includes("http") && !url.includes("amazonaws.com"));
+      if (isExternal) return url;
+
+      try {
+        const key = extractKeyFromUrl(url);
+        return await generatePresignedViewUrl(key);
+      } catch (error) {
+        return url;
+      }
+    };
     const postsWithSignedUrls = await Promise.all(
       posts.map(async (post) => {
-        const coverImage = post.images[0];
-        let signedCoverImageUrl = null;
+        // Sign both the cover image and the user avatar in parallel
+        const [signedCoverImageUrl, signedUserAvatar] = await Promise.all([
+          getSignedUrl(post.images[0]?.url),
+          getSignedUrl(post.user.avatar),
+        ]);
 
-        // Generate signed URL for cover image
-        if (coverImage?.url) {
-          try {
-            const key = extractKeyFromUrl(coverImage.url);
-            signedCoverImageUrl = await generatePresignedViewUrl(key);
-          } catch (error) {
-            console.error(
-              `Failed to sign cover image for post ${post.id}:`,
-              error,
-            );
-          }
-        }
-
-        // Check if current user has engaged with this post
-        const hasLiked = post.likes.some((like) => like.userId === userId);
-        const hasSaved = post.savedBy.some((saved) => saved.userId === userId);
-
-        // Create Post object matching Snippet component requirements
-        const postData: Post = {
+        return {
           id: post.id,
           title: post.title,
           description: post.description,
           category: post.category,
+          // Explicitly mapping visibility and draft status
           visibility: post.visibility as "PUBLIC" | "PRIVATE" | "FOLLOWERS",
           isDraft: post.isDraft,
           createdAt: post.createdAt,
           updatedAt: post.updatedAt,
-
-          // User info
           user: {
-            id: post.user.id,
-            username: post.user.username,
-            avatar: post.user.avatar,
+            ...post.user,
+            avatar: signedUserAvatar, // Fixed: Now using signed URL
           },
-
-          // Cover image with signed URL
           coverImage: signedCoverImageUrl,
           images: post.images.map((img) => ({
             id: img.id,
-            url: signedCoverImageUrl || img.url, // Use signed URL if available
-            description: null, // Since we didn't select description in the query
+            url: signedCoverImageUrl || img.url,
+            description: null,
             isCover: img.isCover,
-            createdAt: post.createdAt, // Fallback since we didn't select createdAt for images
+            createdAt: post.createdAt,
             updatedAt: post.updatedAt,
           })),
-          // Tags
           tags: post.tags.map((t) => t.tag.name),
-
-          // Counts
-          _count: {
-            likes: post._count.likes,
-            comments: post._count.comments,
-            savedBy: post._count.savedBy,
-          },
-
-          // User engagement flags (for Snippet component)
-          isLiked: hasLiked,
-          isSaved: hasSaved,
-
-          // For navigation in Snippet component
+          _count: post._count,
+          isLiked: post.likes.length > 0,
+          isSaved: post.savedBy.length > 0,
           linkTo: `/posts/${post.id}`,
         };
-
-        return postData;
       }),
     );
 
-    // Calculate pagination metadata
     const totalPages = Math.ceil(totalPosts / perPage);
-    const hasNextPage = page < totalPages;
-    const hasPrevPage = page > 1;
 
     return {
       success: true,
-      message: "Your posts retrieved successfully",
+      message: "Posts retrieved successfully",
       data: {
         posts: postsWithSignedUrls,
         pagination: {
           currentPage: page,
-          perPage: perPage,
-          totalPages: totalPages,
-          totalPosts: totalPosts,
-          hasNextPage: hasNextPage,
-          hasPrevPage: hasPrevPage,
+          perPage,
+          totalPages,
+          totalPosts,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
         },
         currentUserId: userId,
       },
     };
   } catch (error) {
-    console.error("Error fetching your posts:", error);
-
+    console.error("getMyPosts Error:", error);
     return {
       success: false,
       message: "An error occurred while fetching your posts",
@@ -221,8 +187,8 @@ export async function getMyPosts(options: GetMyPostsOptions = {}): Promise<{
       data: {
         posts: [],
         pagination: {
-          currentPage: options.page || 1,
-          perPage: options.perPage || 10,
+          currentPage: 1,
+          perPage: 10,
           totalPages: 0,
           totalPosts: 0,
           hasNextPage: false,

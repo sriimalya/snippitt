@@ -197,7 +197,7 @@ const Explore = ({ initialPosts, initialPagination }: ExploreProps) => {
               <div className="mt-12 text-center">
                 <Button
                   onClick={() => setPage(p => p + 1)}
-                  variant="theme-primary"
+                  variant="primary"
                   size="lg"
                   disabled={loadingMore}
                   className="px-10"

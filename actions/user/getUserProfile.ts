@@ -5,9 +5,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-providers";
 import { extractKeyFromUrl, generatePresignedViewUrl } from "@/lib/aws_s3";
 
-/**
- * Reusable helper to handle both S3 and External (Google) URLs
- */
 async function getValidImageUrl(url: string | null | undefined) {
   if (!url) return null;
   // If it's a Google URL or a full external link, return as is
@@ -44,7 +41,7 @@ export async function getUserProfile({ profileId }: { profileId: string }) {
           select: {
             followers: true,
             followings: true,
-            posts: { where: { isDraft: false } },
+
             collections: { where: { isDraft: false } },
           },
         },
@@ -62,16 +59,20 @@ export async function getUserProfile({ profileId }: { profileId: string }) {
     }
 
     // 2. Content Visibility Logic
+    // Section 2: Content Visibility Logic
     const isFollowing = user.followers && user.followers.length > 0;
-    const visibilityFilter = isOwner
-      ? {}
-      : {
-          isDraft: false,
-          OR: [
-            { visibility: "PUBLIC" as any },
-            ...(isFollowing ? [{ visibility: "FOLLOWERS" as any }] : []),
-          ],
-        };
+
+    const visibilityFilter = {
+      isDraft: false, // STOPS drafts from showing for everyone, including you
+      ...(isOwner
+        ? {} // Owners still see their private/followers posts
+        : {
+            OR: [
+              { visibility: "PUBLIC" as any },
+              ...(isFollowing ? [{ visibility: "FOLLOWERS" as any }] : []),
+            ],
+          }),
+    };
 
     // 3. Parallel Data Fetching
     const [categoryStats, rawPosts, rawCollections] = await Promise.all([

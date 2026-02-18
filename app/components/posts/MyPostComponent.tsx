@@ -2,22 +2,19 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import Snippet from "@/app/components/general/Snippitt";
 import { getMyPosts } from "@/actions/posts/getMyPosts";
 import Button from "@/app/components/Button";
+import { Category } from "@/app/generated/prisma/enums";
 import { 
-  Loader2, 
   ChevronLeft, 
   ChevronRight, 
   Grid, 
   List, 
   Filter, 
   Plus, 
-  Search, 
   RefreshCw, 
   FileText, 
-  Eye, 
   MessageCircle, 
   Bookmark,
   Heart,
@@ -105,7 +102,7 @@ const MyPostComponent = () => {
     router.push("/create-post");
   };
 
-  const categories = Array.from(new Set(posts.map(post => post.category)));
+  const categories = Object.values(Category);
 
   if (initialLoading) {
     return (
@@ -134,7 +131,7 @@ const MyPostComponent = () => {
             </div>
             <Button
               onClick={handleCreatePost}
-              variant="theme-primary"
+              variant="primary"
               icon={<Plus className="w-4 h-4" />}
             >
               Create New Snippet
@@ -268,7 +265,7 @@ const MyPostComponent = () => {
             </p>
             <Button
               onClick={handleCreatePost}
-              variant="theme-primary"
+              variant="primary"
               size="lg"
               icon={<Plus className="w-5 h-5" />}
             >

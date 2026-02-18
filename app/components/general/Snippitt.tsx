@@ -30,8 +30,7 @@ const Snippet = ({
     const inputDate = new Date(date);
     if (isNaN(inputDate.getTime())) return "";
 
-  
-    const now = new Date().getTime(); 
+    const now = new Date().getTime();
 
     const seconds = Math.floor((now - inputDate.getTime()) / 1000);
     if (seconds < 5) return "Just now";
@@ -108,7 +107,7 @@ const Snippet = ({
 
                   {isCurrentUsersPost && (
                     <>
-                      <Link 
+                      <Link
                         href={`/post/${post.id}/edit`}
                         className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-primary/10 hover:text-primary transition"
                         onClick={(e) => e.stopPropagation()}
@@ -121,7 +120,6 @@ const Snippet = ({
                         className="flex items-center w-full px-4 py-2 text-sm text-red-500 hover:bg-primary/10 hover:text-primary transition"
                         onClick={(e) => {
                           e.stopPropagation();
-                          
                         }}
                       >
                         <Trash size={16} className="mr-2" />
@@ -198,6 +196,11 @@ const Snippet = ({
         {/* Footer - Visibility & Stats */}
         <div className="flex items-center justify-between">
           <VisibilityTag visibility={post.visibility as Visibility} />
+          {post.isDraft && (
+            <span className="px-2 py-1 text-[10px] font-black bg-amber-100 text-amber-700 rounded-md uppercase tracking-wider">
+              Draft
+            </span>
+          )}
 
           <div
             className="flex items-center gap-4 text-sm text-zinc-400"
