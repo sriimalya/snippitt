@@ -8,8 +8,7 @@ import LikeButton from "./LikeButton";
 import AddCollectionButton from "./AddCollectionButton";
 import ToggleSaveButton from "./ToggleSaveButton";
 
-const DEFAULT_COVER_IMAGE =
-  "https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=1470&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
+const DEFAULT_COVER_IMAGE = "/assets/default.svg";
 
 interface SnippetProps {
   post: Post;
@@ -68,7 +67,7 @@ const Snippet = ({
       onClick={handleCardClick}
     >
       {/* Cover Image */}
-      <div className="relative h-48 w-full">
+      <div className="relative w-full aspect-[16/9]">
         <Image
           src={post.coverImage || DEFAULT_COVER_IMAGE}
           alt="Cover"
