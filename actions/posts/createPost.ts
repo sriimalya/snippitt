@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { CreatePostSchema, CreatePostInput } from "@/schemas/post";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-providers";
+import { revalidateTag } from "next/cache";
 
 export async function createPost(data: CreatePostInput) {
   try {
@@ -47,7 +48,7 @@ export async function createPost(data: CreatePostInput) {
         tags: { include: { tag: true } },
       },
     });
-
+    revalidateTag('explore-feed', 'default');
     return {
       success: true,
       message: "Post created successfully",

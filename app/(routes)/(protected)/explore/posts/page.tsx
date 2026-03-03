@@ -4,17 +4,16 @@ import Explore from "@/app/components/general/Explore";
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: { tag?: string };
+  searchParams: Promise<{ tag?: string }>;
 }) {
-  const tag = searchParams.tag;
+  const { tag } = await searchParams;
 
   const result = await getExplorePosts({
     page: 1,
     perPage: 9,
-    tag, 
+    tag,
   });
-
-  const initialPosts = result.success ? result.data?.posts || [] : [];
+  const initialPosts = result.success ? (result.data?.posts ?? []) : [];
   const initialPagination = result.data?.pagination;
 
   return (

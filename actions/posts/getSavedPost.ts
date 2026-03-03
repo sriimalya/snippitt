@@ -12,7 +12,22 @@ interface GetSavedOptions {
   search?: string;
 }
 
-export async function getSavedPosts(options: GetSavedOptions = {}) {
+async function getSignedUrl(url: string | null | undefined) {
+  if (!url) return null;
+  const isExternal =
+    url.includes("googleusercontent.com") ||
+    (url.includes("http") && !url.includes("amazonaws.com"));
+  if (isExternal) return url;
+
+  try {
+    const key = extractKeyFromUrl(url);
+    return await generatePresignedViewUrl(key);
+  } catch (error) {
+    return url; // Fallback
+  }
+}
+
+export async function getSavedPosts(options: any = {}) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
@@ -25,23 +40,23 @@ export async function getSavedPosts(options: GetSavedOptions = {}) {
     const skip = (page - 1) * perPage;
     const search = options.search?.trim();
 
-    // 1. Build Search Clause for the nested post
-    const postSearchFilter = search ? {
-      OR: [
-        { title: { contains: search, mode: "insensitive" as any } },
-        { description: { contains: search, mode: "insensitive" as any } },
-      ],
-    } : {};
+    const postSearchFilter = search
+      ? {
+          OR: [
+            { title: { contains: search, mode: "insensitive" as any } },
+            { description: { contains: search, mode: "insensitive" as any } },
+          ],
+        }
+      : {};
 
-    // 2. Fetch SavedPosts with full Post relations
     const [savedEntries, totalSaved] = await Promise.all([
       prisma.savedPost.findMany({
         where: {
           userId,
           post: {
             ...postSearchFilter,
-            isDraft: false, // Don't show drafts even if saved
-          }
+            isDraft: false,
+          },
         },
         include: {
           post: {
@@ -49,11 +64,13 @@ export async function getSavedPosts(options: GetSavedOptions = {}) {
               user: { select: { id: true, username: true, avatar: true } },
               images: { where: { isCover: true }, take: 1 },
               tags: { include: { tag: true } },
-              _count: { select: { likes: true, comments: true, savedBy: true } },
+              _count: {
+                select: { likes: true, comments: true, savedBy: true },
+              },
               likes: { where: { userId }, select: { userId: true } },
               savedBy: { where: { userId }, select: { userId: true } },
-            }
-          }
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -62,26 +79,21 @@ export async function getSavedPosts(options: GetSavedOptions = {}) {
       prisma.savedPost.count({
         where: {
           userId,
-          post: postSearchFilter
-        }
-      })
+          post: {
+            ...postSearchFilter,
+            isDraft: false,
+          },
+        },
+      }),
     ]);
-
-    // 3. Transform to Snippet-compatible Post objects
     const posts: Post[] = await Promise.all(
       savedEntries.map(async (entry) => {
         const post = entry.post;
-        const coverImage = post.images[0];
-        let signedUrl = null;
 
-        if (coverImage?.url) {
-          try {
-            const key = extractKeyFromUrl(coverImage.url);
-            signedUrl = await generatePresignedViewUrl(key);
-          } catch (e) {
-            signedUrl = coverImage.url;
-          }
-        }
+        const [signedCoverUrl, signedAuthorAvatar] = await Promise.all([
+          getSignedUrl(post.images[0]?.url),
+          getSignedUrl(post.user.avatar), 
+        ]);
 
         return {
           id: post.id,
@@ -95,25 +107,24 @@ export async function getSavedPosts(options: GetSavedOptions = {}) {
           user: {
             id: post.user.id,
             username: post.user.username,
-            avatar: post.user.avatar,
+            avatar: signedAuthorAvatar,
           },
-          coverImage: signedUrl,
-          // Satisfy Post interface images array
-          images: post.images.map(img => ({
+          coverImage: signedCoverUrl,
+          images: post.images.map((img) => ({
             id: img.id,
-            url: signedUrl || img.url,
+            url: signedCoverUrl || img.url,
             isCover: img.isCover,
-            description: img.description,
-            createdAt: img.createdAt,
-            updatedAt: img.updatedAt
+            description: img.description || null,
+            createdAt: post.createdAt, 
+            updatedAt: post.updatedAt,
           })),
           tags: post.tags.map((t) => t.tag.name),
           _count: post._count,
           isLiked: post.likes.length > 0,
-          isSaved: true, // We know it's saved because we are in the SavedPost table
+          isSaved: true,
           linkTo: `/post/${post.id}`,
         };
-      })
+      }),
     );
 
     return {
@@ -125,10 +136,9 @@ export async function getSavedPosts(options: GetSavedOptions = {}) {
           pages: Math.ceil(totalSaved / perPage),
           currentPage: page,
         },
-        currentUserId: userId
-      }
+        currentUserId: userId,
+      },
     };
-
   } catch (error) {
     console.error("Fetch Saved Posts Error:", error);
     return { success: false, message: "Failed to fetch saved posts" };

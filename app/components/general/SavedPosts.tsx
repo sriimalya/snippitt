@@ -155,7 +155,7 @@ const SavedPosts = ({
             <div className="mt-12 text-center">
               <Button
                 onClick={() => setPage((p) => p + 1)}
-                variant="theme-primary"
+                variant="primary"
                 disabled={loadingMore}
                 icon={loadingMore ? <Loader2 className="animate-spin" /> : null}
               >
@@ -177,7 +177,7 @@ const SavedPosts = ({
           </p>
           {!searchTerm && (
             <Link href="/explore">
-              <Button variant="theme-primary" className="mt-6">
+              <Button variant="primary" className="mt-6">
                 Explore Content
               </Button>
             </Link>

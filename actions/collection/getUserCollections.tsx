@@ -9,7 +9,24 @@ import { Collection } from "@/types";
 interface GetCollectionsOptions {
   page?: number;
   perPage?: number;
-  userId?: string; 
+  userId?: string;
+}
+
+// Reusable signing helper to handle logic in one place
+async function getSignedUrl(url: string | null | undefined) {
+  if (!url) return null;
+  const isExternal =
+    url.includes("googleusercontent.com") ||
+    (url.includes("http") && !url.includes("amazonaws.com"));
+  if (isExternal) return url;
+
+  try {
+    const key = extractKeyFromUrl(url);
+    return await generatePresignedViewUrl(key);
+  } catch (error) {
+    console.error("S3 Signing failed for URL:", url);
+    return url; // Fallback to raw URL
+  }
 }
 
 export async function getUserCollections(options: GetCollectionsOptions = {}) {
@@ -17,7 +34,6 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
     const session = await getServerSession(authOptions);
     const currentUserId = session?.user?.id;
 
-    // Default to the logged-in user if no specific userId is provided
     const targetUserId = options.userId || currentUserId;
 
     if (!targetUserId) {
@@ -25,15 +41,13 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
     }
 
     const page = options.page || 1;
-    const perPage = options.perPage || 12; // 4x3 grid friendly
+    const perPage = options.perPage || 12;
     const skip = (page - 1) * perPage;
 
     const isOwner = currentUserId === targetUserId;
 
     // 1. Visibility Logic
-    // Owners see everything. Others see PUBLIC or FOLLOWERS (if following).
     let visibilityFilter: any = {};
-
     if (!isOwner) {
       let isFollowing = false;
       if (currentUserId) {
@@ -65,12 +79,8 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
           ...visibilityFilter,
         },
         include: {
-          _count: {
-            select: { posts: true },
-          },
-          user: {
-            select: { id: true, username: true, avatar: true },
-          },
+          _count: { select: { posts: true } },
+          user: { select: { id: true, username: true, avatar: true } },
         },
         orderBy: { updatedAt: "desc" },
         skip,
@@ -84,18 +94,14 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
       }),
     ]);
 
-    // 3. Transform and Sign Cover Images
+    // 3. Transform and Sign EVERYTHING in parallel
     const transformedCollections: Collection[] = await Promise.all(
       collections.map(async (col) => {
-        let signedCover = null;
-        if (col.coverImage) {
-          try {
-            const key = extractKeyFromUrl(col.coverImage);
-            signedCover = await generatePresignedViewUrl(key);
-          } catch (e) {
-            signedCover = col.coverImage;
-          }
-        }
+        // VVIP Fix: Sign both URLs at the same time for maximum speed
+        const [signedCover, signedAvatar] = await Promise.all([
+          getSignedUrl(col.coverImage),
+          getSignedUrl(col.user.avatar),
+        ]);
 
         return {
           id: col.id,
@@ -106,12 +112,15 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
           isDraft: col.isDraft,
           createdAt: col.createdAt,
           updatedAt: col.updatedAt,
-          user: col.user,
+          user: {
+            ...col.user,
+            avatar: signedAvatar, // FIXED: Now using the signed S3 URL
+          },
           _count: {
             posts: col._count.posts,
           },
         };
-      })
+      }),
     );
 
     return {
@@ -127,7 +136,7 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
       },
     };
   } catch (error) {
-    console.error("getMyCollections Error:", error);
+    console.error("getUserCollections Error:", error);
     return { success: false, message: "Failed to fetch collections" };
   }
 }

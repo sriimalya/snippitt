@@ -11,10 +11,25 @@ interface ExploreOptions {
   perPage?: number;
   search?: string;
   category?: string;
-  tag?: string; 
+  tag?: string;
 }
 
-export async function getExplorePosts(options: ExploreOptions = {}) {
+async function getSignedUrl(url: string | null | undefined) {
+  if (!url) return null;
+  const isExternal =
+    url.includes("googleusercontent.com") ||
+    (url.includes("http") && !url.includes("amazonaws.com"));
+  if (isExternal) return url;
+
+  try {
+    const key = extractKeyFromUrl(url);
+    return await generatePresignedViewUrl(key);
+  } catch {
+    return url;
+  }
+}
+
+export async function getExplorePosts(options: any = {}) {
   try {
     const session = await getServerSession(authOptions);
     const userId = session?.user?.id;
@@ -24,17 +39,7 @@ export async function getExplorePosts(options: ExploreOptions = {}) {
     const skip = (page - 1) * perPage;
     const search = options.search?.trim();
 
-    // 1. Get following IDs for visibility logic
-    let followingIds: string[] = [];
-    if (userId) {
-      const following = await prisma.follow.findMany({
-        where: { followerId: userId },
-        select: { followingId: true },
-      });
-      followingIds = following.map((f) => f.followingId);
-    }
-
-    // 2. Build the exact same Visibility Filter logic
+    // 1. Visibility Filter (Database Level)
     const visibilityFilter = {
       OR: [
         { visibility: "PUBLIC" as any },
@@ -42,7 +47,19 @@ export async function getExplorePosts(options: ExploreOptions = {}) {
         {
           AND: [
             { visibility: "FOLLOWERS" as any },
-            { userId: { in: followingIds } },
+            ...(userId
+              ? [
+                  {
+                    user: {
+                      followers: {
+                        some: {
+                          followerId: userId,
+                        },
+                      },
+                    },
+                  },
+                ]
+              : [{ id: "not-possible-id" }]), // If no user, they can't see followers-only posts
           ],
         },
       ],
@@ -51,28 +68,16 @@ export async function getExplorePosts(options: ExploreOptions = {}) {
     const whereClause: any = {
       isDraft: false,
       ...visibilityFilter,
-
       ...(search && {
         OR: [
           { title: { contains: search, mode: "insensitive" } },
           { description: { contains: search, mode: "insensitive" } },
         ],
       }),
-
       ...(options.category && { category: options.category }),
-
-      ...(options.tag && {
-        tags: {
-          some: {
-            tag: {
-              name: options.tag,
-            },
-          },
-        },
-      }),
     };
 
-    // 3. Execute Query with exact same "include" structure as getMyPosts
+    // 3. Execute Query
     const [posts, totalPosts] = await Promise.all([
       prisma.post.findMany({
         where: whereClause,
@@ -81,8 +86,12 @@ export async function getExplorePosts(options: ExploreOptions = {}) {
           images: { where: { isCover: true }, take: 1 },
           tags: { include: { tag: true } },
           _count: { select: { likes: true, comments: true, savedBy: true } },
-          likes: userId ? { where: { userId }, select: { userId: true } } : false,
-          savedBy: userId ? { where: { userId }, select: { userId: true } } : false,
+          likes: userId
+            ? { where: { userId }, select: { userId: true } }
+            : false,
+          savedBy: userId
+            ? { where: { userId }, select: { userId: true } }
+            : false,
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -91,31 +100,25 @@ export async function getExplorePosts(options: ExploreOptions = {}) {
       prisma.post.count({ where: whereClause }),
     ]);
 
-    // 4. Transform - Mirroring getMyPosts exactly
+    // 4. Transform with Avatar Signing & Null Checks
     const transformedPosts: Post[] = await Promise.all(
       posts.map(async (post) => {
-        const coverImage = post.images[0];
-        let signedCoverImageUrl = null;
-
-        if (coverImage?.url) {
-          try {
-            const key = extractKeyFromUrl(coverImage.url);
-            signedCoverImageUrl = await generatePresignedViewUrl(key);
-          } catch (error) {
-            console.error(`Failed to sign URL for post ${post.id}:`, error);
-          }
+        // Safety check: If for some reason Prisma didn't return a user
+        if (!post.user) {
+          throw new Error(`Post ${post.id} is missing an author.`);
         }
 
-        // Check engagement flags (The logic that makes Like/Save work)
-        const hasLiked = userId ? post.likes.length > 0 : false;
-        const hasSaved = userId ? post.savedBy.length > 0 : false;
+        // SIGN BOTH COVER AND AVATAR IN PARALLEL
+        const [signedCoverImageUrl, signedUserAvatar] = await Promise.all([
+          getSignedUrl(post.images[0]?.url),
+          getSignedUrl(post.user.avatar),
+        ]);
 
         return {
           id: post.id,
           title: post.title,
           description: post.description,
           category: post.category,
-          // Casting visibility to match the schema/post.ts expectations
           visibility: post.visibility as "PUBLIC" | "PRIVATE" | "FOLLOWERS",
           isDraft: post.isDraft,
           createdAt: post.createdAt,
@@ -123,10 +126,9 @@ export async function getExplorePosts(options: ExploreOptions = {}) {
           user: {
             id: post.user.id,
             username: post.user.username,
-            avatar: post.user.avatar,
+            avatar: signedUserAvatar, // FIXED: Signed URL
           },
           coverImage: signedCoverImageUrl,
-          // Crucial: satisfying the "images" requirement in Post type
           images: post.images.map((img) => ({
             id: img.id,
             url: signedCoverImageUrl || img.url,
@@ -141,11 +143,11 @@ export async function getExplorePosts(options: ExploreOptions = {}) {
             comments: post._count.comments,
             savedBy: post._count.savedBy,
           },
-          isLiked: hasLiked,
-          isSaved: hasSaved,
+          isLiked: userId ? post.likes.length > 0 : false,
+          isSaved: userId ? post.savedBy.length > 0 : false,
           linkTo: `/post/${post.id}`,
         };
-      })
+      }),
     );
 
     return {
@@ -157,11 +159,14 @@ export async function getExplorePosts(options: ExploreOptions = {}) {
           pages: Math.ceil(totalPosts / perPage),
           currentPage: page,
         },
-        currentUserId: userId || "", // Useful for the Snippet edit button logic
+        currentUserId: userId || "",
       },
     };
   } catch (error) {
     console.error("Explore Fetch Error:", error);
-    return { success: false, message: "An error occurred while fetching posts" };
+    return {
+      success: false,
+      message: "An error occurred while fetching posts",
+    };
   }
 }

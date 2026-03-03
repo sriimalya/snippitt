@@ -20,14 +20,12 @@ async function getValidImageUrl(url: string | null | undefined) {
   } catch (error) {
     console.error("S3 Signing failed for URL:", url, error);
     return url;
-
   }
 }
 
 async function signPostImages(posts: any[]) {
   return await Promise.all(
     posts.map(async (post) => {
-
       const signedImages = await Promise.all(
         post.images.map(async (img: any) => ({
           ...img,
@@ -85,9 +83,9 @@ export async function getDashboardData() {
         orderBy: { createdAt: "desc" },
         include: {
           user: { select: { id: true, username: true, avatar: true } },
-          images: true,
+          images: { where: { isCover: true }, take: 1 },
           _count: { select: { likes: true, comments: true, savedBy: true } },
-          likes: { where: {userId}, select: { id: true } }, 
+          likes: { where: { userId }, select: { id: true } },
           savedBy: {
             where: { userId },
             select: { id: true },
@@ -102,7 +100,7 @@ export async function getDashboardData() {
         orderBy: { updatedAt: "desc" },
         include: {
           user: { select: { id: true, username: true, avatar: true } },
-          images: true,
+          images: { where: { isCover: true }, take: 1 },
           _count: { select: { likes: true, comments: true, savedBy: true } },
         },
       }),
@@ -168,4 +166,3 @@ export async function getDashboardData() {
     return { success: false, message: "Failed to load dashboard data" };
   }
 }
-
