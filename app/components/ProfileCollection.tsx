@@ -63,7 +63,7 @@ const ProfileCollectionsClient = ({
           {/* owner only: Create New Button */}
           {isOwner && (
             <Link href="/dashboard/collections/new">
-              <Button variant="theme-primary" size="sm" icon={<Plus size={18} />}>
+              <Button variant="primary" size="sm" icon={<Plus size={18} />}>
                 Create New
               </Button>
             </Link>

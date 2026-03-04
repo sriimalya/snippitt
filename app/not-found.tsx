@@ -47,7 +47,7 @@ export default function NotFound() {
             </Button>
             <Link href="/" className="w-full sm:w-auto">
               <Button
-                variant="theme-primary"
+                variant="primary"
                 icon={<Home size={18} />}
                 className="w-full sm:w-auto shadow-lg shadow-[#5865F2]/20"
               >

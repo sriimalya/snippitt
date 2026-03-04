@@ -204,7 +204,7 @@ const EditCollectionClient = ({
               </div>
             </div>
 
-            <Button onClick={handleSave} disabled={isSubmitting} className="w-full py-6 font-bold" variant="theme-primary">
+            <Button onClick={handleSave} disabled={isSubmitting} className="w-full py-6 font-bold" variant="primary">
               {isSubmitting ? <Loader2 className="animate-spin mr-2" size={18} /> : <Save size={18} className="mr-2" />}
               Save Changes
             </Button>

@@ -4,7 +4,7 @@ import {
   changeFileVisibility,
   extractKeyFromUrl,
   generatePresignedViewUrl,
-} from "@/lib/aws-s3";
+} from "@/lib/aws_s3";
 import prisma from "@/lib/prisma";
 import { updateUserSchema } from "@/schemas/user";
 

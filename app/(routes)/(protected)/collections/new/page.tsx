@@ -96,7 +96,7 @@ export default function NewCollectionPage() {
 
             <Button
               type="submit"
-              variant="theme-primary"
+              variant="primary"
               disabled={isSubmitting || !name.trim()}
               className="w-full py-4 rounded-2xl shadow-xl shadow-[#5865F2]/20"
               icon={

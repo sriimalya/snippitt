@@ -55,7 +55,7 @@ const FollowButton = ({
     <div className="flex flex-col md:flex-row items-center gap-6">
       {/* Action Button */}
       <Button
-        variant={isFollowing ? "outline" : "theme-primary"}
+        variant={isFollowing ? "outline" : "primary"}
         onClick={handleToggle}
         disabled={isPending}
         className={`min-w-[130px] shadow-sm ${isFollowing ? "bg-white border-gray-200 text-gray-600 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all" : ""}`}

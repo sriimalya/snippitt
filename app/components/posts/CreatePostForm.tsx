@@ -139,7 +139,7 @@ const CreatePostForm = () => {
 
         if (res.data?.id) {
           setTimeout(() => {
-            router.push(`/post/${res.data.id}/edit`);
+            router.push(`/posts/${res.data.id}/edit`);
           }, 200);
         }
       } else {

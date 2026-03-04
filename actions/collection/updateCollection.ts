@@ -101,8 +101,8 @@ export async function updateCollection(
     });
 
     // 4. Revalidate cache
-    revalidatePath(`/explore/collection/${collectionId}`);
-    revalidatePath(`/dashboard/collections`);
+    revalidatePath(`/explore/collections/${collectionId}`);
+    revalidatePath(`/collections`);
     revalidatePath(`/profile/${userId}/collections`);
 
     return {

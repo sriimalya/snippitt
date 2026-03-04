@@ -310,7 +310,7 @@ export async function updatePost(input: UpdatePostInput): Promise<{
       },
       isLiked: updatedPost.likes.length > 0,
       isSaved: updatedPost.savedBy.length > 0,
-      linkTo: `/explore/post/${updatedPost.id}`,
+      linkTo: `/explore/posts/${updatedPost.id}`,
     };
 
     // Set cover image

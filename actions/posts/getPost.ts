@@ -120,7 +120,7 @@ export async function getPost(
       },
       isLiked: post.likes.length > 0,
       isSaved: post.savedBy.length > 0,
-      linkTo: `/post/${post.id}`,
+      linkTo: `/posts/${post.id}`,
     };
 
     // In getPost, when processing images:

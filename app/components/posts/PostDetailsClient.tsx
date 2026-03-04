@@ -91,6 +91,7 @@ const PostDetailClient = ({ post, currentUserId }: any) => {
                 <ToggleSaveButton
                   postId={post.id}
                   initialIsSaved={post.isSaved}
+                  initialSaveCount={post._count.saved}
                 />
               </div>
             </div>

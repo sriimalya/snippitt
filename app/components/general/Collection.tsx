@@ -145,7 +145,7 @@ export const Collections = ({
 
                   {isOwner && (
                     <Link
-                      href={`/collection/${collection.id}/edit`}
+                      href={`/collections/${collection.id}/edit`}
                       className="flex items-center justify-center rounded-lg bg-white/90 backdrop-blur-md p-2 shadow-sm border border-white/50 opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-110"
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -215,7 +215,7 @@ export const Collections = ({
         return (
           <Link
             key={collection.id}
-            href={`/explore/collection/${collection.id}`}
+            href={`/collections/${collection.id}`}
             className="group flex items-center gap-5 rounded-xl border border-neutral-200/70 bg-white p-4 transition-all duration-300 hover:border-neutral-300 hover:shadow-lg hover:shadow-neutral-200/50"
           >
             {/* Thumbnail */}
