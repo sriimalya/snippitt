@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createPost } from "@/actions/posts/createPost";
+import { getTags } from "@/actions/tags";
 import { Category } from "@/app/generated/prisma/enums";
 import Dropdown from "@/app/components/inputFields/Dropdown";
 import Button from "@/app/components/Button";
@@ -38,9 +39,20 @@ const CreatePostForm = () => {
   const [showAllTags, setShowAllTags] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
   const [selectedTagsOpen, setSelectedTagsOpen] = useState(true);
+  const [dbTags, setDbTags] = useState<string[]>([]);
 
-  const tagOptions = useMemo(
-    () => [
+  useEffect(() => {
+    const fetchTags = async () => {
+      const res = await getTags();
+      if (res.success && res.data) {
+        setDbTags(res.data);
+      }
+    };
+    fetchTags();
+  }, []);
+
+  const tagOptions = useMemo(() => {
+    const baseTags = [
       "Technology",
       "Design",
       "Development",
@@ -57,9 +69,27 @@ const CreatePostForm = () => {
       "Finance",
       "Marketing",
       "Writing",
-    ],
-    [],
-  );
+    ];
+    // Combine base tags and DB tags, ensuring uniqueness by lowercasing
+    const allTagsMap = new Map<string, string>();
+
+    // Add base tags first
+    baseTags.forEach((tag) => {
+      allTagsMap.set(tag.toLowerCase(), tag);
+    });
+
+    // Add DB tags (can override case of base tags if they match)
+    dbTags.forEach((tag) => {
+      // Capitalize first letter for display if it's purely lowercase, otherwise keep as is
+      const displayTag =
+        tag.charAt(0) === tag.charAt(0).toLowerCase()
+          ? tag.charAt(0).toUpperCase() + tag.slice(1)
+          : tag;
+      allTagsMap.set(tag.toLowerCase(), displayTag);
+    });
+
+    return Array.from(allTagsMap.values());
+  }, [dbTags]);
 
   const validateForm = () => {
     let valid = true;
@@ -107,7 +137,6 @@ const CreatePostForm = () => {
       if (res.success) {
         toast.success("🎉 Draft created successfully! Ready for images.");
 
-      
         if (res.data?.id) {
           setTimeout(() => {
             router.push(`/post/${res.data.id}/edit`);
@@ -147,12 +176,17 @@ const CreatePostForm = () => {
   };
 
   const toggleTag = (tag: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      tags: prev.tags.includes(tag)
-        ? prev.tags.filter((t) => t !== tag)
-        : [...prev.tags, tag],
-    }));
+    setFormData((prev) => {
+      const isSelected = prev.tags.some(
+        (t) => t.toLowerCase() === tag.toLowerCase(),
+      );
+      return {
+        ...prev,
+        tags: isSelected
+          ? prev.tags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
+          : [...prev.tags, tag],
+      };
+    });
   };
 
   const removeTag = (tag: string) => {
@@ -385,7 +419,16 @@ const CreatePostForm = () => {
                     type="text"
                     value={tagSearch}
                     onChange={(e) => setTagSearch(e.target.value)}
-                    placeholder="Search tags..."
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && tagSearch.trim()) {
+                        e.preventDefault();
+                        if (!formData.tags.includes(tagSearch.trim())) {
+                          toggleTag(tagSearch.trim());
+                        }
+                        setTagSearch("");
+                      }
+                    }}
+                    placeholder="Search or create tags (Press Enter)..."
                     className="w-full pl-10 pr-4 py-2.5 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#94BBFF]/30 focus:border-[#5865F2] text-sm"
                   />
                   {tagSearch && (
@@ -408,6 +451,27 @@ const CreatePostForm = () => {
                     : `Found ${filteredTags.length} matching tags:`}
                 </p>
                 <div className="flex flex-wrap gap-2 max-h-60 overflow-y-auto pr-2">
+                  {tagSearch.trim() &&
+                    !filteredTags.some(
+                      (t) => t.toLowerCase() === tagSearch.trim().toLowerCase(),
+                    ) &&
+                    !formData.tags.some(
+                      (t) => t.toLowerCase() === tagSearch.trim().toLowerCase(),
+                    ) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toggleTag(tagSearch.trim());
+                          setTagSearch("");
+                        }}
+                        className="inline-flex items-center px-3 py-2 rounded-lg border border-dashed border-[#5865F2] text-[#5865F2] hover:bg-[#5865F2]/5 transition-all duration-200"
+                      >
+                        <Sparkles className="w-3 h-3 mr-1.5" />
+                        <span className="text-sm font-medium">
+                          Create &quot;{tagSearch.trim()}&quot;
+                        </span>
+                      </button>
+                    )}
                   {displayedTags.map((tag) => {
                     const isSelected = formData.tags.includes(tag);
                     return (

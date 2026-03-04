@@ -30,6 +30,11 @@ import {
   Trash2,
   Info,
   X,
+  Search,
+  Sparkles,
+  Hash,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { getPost } from "@/actions/posts/getPost";
 import { deletePost } from "@/actions/posts/deletePost";
@@ -37,6 +42,7 @@ import { Category, Visibility } from "@/app/generated/prisma/enums";
 import type { Post } from "@/schemas/post";
 import { updatePost } from "@/actions/posts/updatePost";
 import { generatePresignedUrlAction } from "@/actions/upload";
+import { getTags } from "@/actions/tags";
 
 // Types for file handling
 interface FileWithMetadata {
@@ -91,6 +97,70 @@ const EditPostForm = () => {
     category: "" as Category,
     tags: [] as string[],
   });
+
+  const [showAllTags, setShowAllTags] = useState(false);
+  const [tagSearch, setTagSearch] = useState("");
+
+  const [dbTags, setDbTags] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchTags = async () => {
+      const res = await getTags();
+      if (res.success && res.data) {
+        setDbTags(res.data);
+      }
+    };
+    fetchTags();
+  }, []);
+
+  const tagOptions = useMemo(() => {
+    const baseTags = [
+      "Technology",
+      "Design",
+      "Development",
+      "Business",
+      "Art",
+      "Photography",
+      "Travel",
+      "Food",
+      "Health",
+      "Education",
+      "Science",
+      "Music",
+      "Sports",
+      "Finance",
+      "Marketing",
+      "Writing",
+    ];
+    // Combine base tags and DB tags, ensuring uniqueness by lowercasing
+    const allTagsMap = new Map<string, string>();
+
+    // Add base tags first
+    baseTags.forEach((tag) => {
+      allTagsMap.set(tag.toLowerCase(), tag);
+    });
+
+    // Add DB tags (can override case of base tags if they match)
+    dbTags.forEach((tag) => {
+      // Capitalize first letter for display if it's purely lowercase, otherwise keep as is
+      const displayTag =
+        tag.charAt(0) === tag.charAt(0).toLowerCase()
+          ? tag.charAt(0).toUpperCase() + tag.slice(1)
+          : tag;
+      allTagsMap.set(tag.toLowerCase(), displayTag);
+    });
+
+    return Array.from(allTagsMap.values());
+  }, [dbTags]);
+
+  const filteredTags = useMemo(() => {
+    if (!tagSearch.trim()) return tagOptions;
+    return tagOptions.filter((tag) =>
+      tag.toLowerCase().includes(tagSearch.toLowerCase()),
+    );
+  }, [tagOptions, tagSearch]);
+
+  const displayedTags = showAllTags ? filteredTags : filteredTags.slice(0, 12);
 
   // Fetch post data
   useEffect(() => {
@@ -271,12 +341,17 @@ const EditPostForm = () => {
 
   // Toggle tag selection
   const toggleTag = useCallback((tag: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      tags: prev.tags.includes(tag)
-        ? prev.tags.filter((t) => t !== tag)
-        : [...prev.tags, tag],
-    }));
+    setFormData((prev) => {
+      const isSelected = prev.tags.some(
+        (t) => t.toLowerCase() === tag.toLowerCase(),
+      );
+      return {
+        ...prev,
+        tags: isSelected
+          ? prev.tags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
+          : [...prev.tags, tag],
+      };
+    });
   }, []);
 
   // Upload files to S3 in parallel
@@ -542,22 +617,7 @@ const EditPostForm = () => {
     [],
   );
 
-  // Tag options (example - you can fetch from DB or use constants)
-  const tagOptions = useMemo(
-    () => [
-      "Technology",
-      "Design",
-      "Development",
-      "Business",
-      "Art",
-      "Photography",
-      "Travel",
-      "Food",
-    ],
-    [],
-  );
-
-  // Stats
+  // Visibility options
   const stats = useMemo(
     () => ({
       totalFiles: files.length,
@@ -604,10 +664,7 @@ const EditPostForm = () => {
           <p className="text-gray-600 mb-4">
             The post you&apos;re trying to edit doesn&apos;t exist.
           </p>
-          <Button
-            onClick={() => router.push("/my-posts")}
-            variant="primary"
-          >
+          <Button onClick={() => router.push("/my-posts")} variant="primary">
             Back to My Posts
           </Button>
         </div>
@@ -718,9 +775,7 @@ const EditPostForm = () => {
                 <div className="flex space-x-1">
                   <Button
                     onClick={() => setViewMode("details")}
-                    variant={
-                      viewMode === "details" ? "primary" : "outline"
-                    }
+                    variant={viewMode === "details" ? "primary" : "outline"}
                     size="sm"
                     icon={<FileText className="w-4 h-4" />}
                   >
@@ -740,9 +795,7 @@ const EditPostForm = () => {
                   <div className="flex space-x-1">
                     <Button
                       onClick={() => setFileViewMode("grid")}
-                      variant={
-                        fileViewMode === "grid" ? "primary" : "outline"
-                      }
+                      variant={fileViewMode === "grid" ? "primary" : "outline"}
                       size="sm"
                       icon={<Grid className="w-4 h-4" />}
                     >
@@ -750,9 +803,7 @@ const EditPostForm = () => {
                     </Button>
                     <Button
                       onClick={() => setFileViewMode("list")}
-                      variant={
-                        fileViewMode === "list" ? "primary" : "outline"
-                      }
+                      variant={fileViewMode === "list" ? "primary" : "outline"}
                       size="sm"
                       icon={<List className="w-4 h-4" />}
                     >
@@ -859,23 +910,101 @@ const EditPostForm = () => {
                       </div>
 
                       <label className="block text-sm font-semibold text-gray-900 mb-2 text-xs uppercase text-gray-500">
-                        Quick Add
+                        Add Tags
                       </label>
-                      <div className="flex flex-wrap gap-2">
-                        {tagOptions.map((tag) => (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={() => toggleTag(tag)}
-                            className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                              formData.tags.includes(tag)
-                                ? "hidden"
-                                : "bg-white text-gray-700 border-gray-300"
-                            }`}
-                          >
-                            + {tag}
-                          </button>
-                        ))}
+                      <div className="space-y-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <input
+                            type="text"
+                            value={tagSearch}
+                            onChange={(e) => setTagSearch(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && tagSearch.trim()) {
+                                e.preventDefault();
+                                if (
+                                  !formData.tags.some(
+                                    (t) =>
+                                      t.toLowerCase() ===
+                                      tagSearch.trim().toLowerCase(),
+                                  )
+                                ) {
+                                  toggleTag(tagSearch.trim());
+                                }
+                                setTagSearch("");
+                              }
+                            }}
+                            placeholder="Search or create tags (Press Enter)..."
+                            className="w-full pl-10 pr-4 py-2 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#5865F2] focus:border-transparent text-sm"
+                          />
+                          {tagSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setTagSearch("")}
+                              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-2">
+                          {tagSearch.trim() &&
+                            !filteredTags.some(
+                              (t) =>
+                                t.toLowerCase() ===
+                                tagSearch.trim().toLowerCase(),
+                            ) &&
+                            !formData.tags.some(
+                              (t) =>
+                                t.toLowerCase() ===
+                                tagSearch.trim().toLowerCase(),
+                            ) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  toggleTag(tagSearch.trim());
+                                  setTagSearch("");
+                                }}
+                                className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-[#5865F2] text-[#5865F2] hover:bg-[#5865F2]/5 transition-all duration-200"
+                              >
+                                <Sparkles className="w-3 h-3 mr-1.5" />
+                                <span className="text-sm font-medium">
+                                  Create &quot;{tagSearch.trim()}&quot;
+                                </span>
+                              </button>
+                            )}
+                          {displayedTags.map((tag) => {
+                            const isSelected = formData.tags.some(
+                              (t) => t.toLowerCase() === tag.toLowerCase(),
+                            );
+                            if (isSelected) return null; // Don't show in suggestions if already selected
+                            return (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => toggleTag(tag)}
+                                className="inline-flex items-center px-3 py-1.5 rounded-lg border bg-white text-gray-700 border-gray-300 hover:border-[#94BBFF] hover:text-[#5865F2] transition-colors text-sm font-medium"
+                              >
+                                + {tag}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {filteredTags.length > 12 && (
+                          <div className="text-center pt-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowAllTags(!showAllTags)}
+                              className="inline-flex items-center text-xs font-medium text-[#5865F2] hover:text-[#4854e0]"
+                            >
+                              {showAllTags
+                                ? "Show Less"
+                                : `Show All ${filteredTags.length} Tags`}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
