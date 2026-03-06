@@ -10,6 +10,7 @@ interface GetCollectionsOptions {
   page?: number;
   perPage?: number;
   userId?: string;
+  visibility?: "PUBLIC" | "PRIVATE" | "FOLLOWERS" | "DRAFT";
 }
 
 // Reusable signing helper to handle logic in one place
@@ -46,10 +47,23 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
 
     const isOwner = currentUserId === targetUserId;
 
-    // 1. Visibility Logic
-    let visibilityFilter: any = {};
-    if (!isOwner) {
+    const whereClause: any = {
+      userId: targetUserId,
+    };
+
+    if (isOwner) {
+      if (!options.visibility) {
+        // ALL
+        whereClause.isDraft = false;
+      } else if (options.visibility === "DRAFT") {
+        whereClause.isDraft = true;
+      } else {
+        whereClause.visibility = options.visibility;
+        whereClause.isDraft = false;
+      }
+    } else {
       let isFollowing = false;
+
       if (currentUserId) {
         const follow = await prisma.follow.findUnique({
           where: {
@@ -59,25 +73,21 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
             },
           },
         });
+
         isFollowing = !!follow;
       }
 
-      visibilityFilter = {
-        isDraft: false,
-        OR: [
-          { visibility: "PUBLIC" },
-          ...(isFollowing ? [{ visibility: "FOLLOWERS" }] : []),
-        ],
-      };
+      whereClause.isDraft = false;
+      whereClause.OR = [
+        { visibility: "PUBLIC" },
+        ...(isFollowing ? [{ visibility: "FOLLOWERS" }] : []),
+      ];
     }
 
     // 2. Fetch Data
     const [collections, total] = await Promise.all([
       prisma.collection.findMany({
-        where: {
-          userId: targetUserId,
-          ...visibilityFilter,
-        },
+        where: whereClause,
         include: {
           _count: { select: { posts: true } },
           user: { select: { id: true, username: true, avatar: true } },
@@ -87,10 +97,7 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
         take: perPage,
       }),
       prisma.collection.count({
-        where: {
-          userId: targetUserId,
-          ...visibilityFilter,
-        },
+        where: whereClause,
       }),
     ]);
 

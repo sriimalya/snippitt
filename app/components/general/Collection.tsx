@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Collection } from "@/types";
@@ -12,108 +12,88 @@ import {
   ChevronRight,
   Folder,
   Edit3,
+  Edit,
+  Trash,
+  Share,
+  Ellipsis,
 } from "lucide-react";
+import { VisibilityTag } from "./VisibilityTags";
 
-const DEFAULT_COVER_IMAGE =
-  "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop";
-
-// Design System Tokens
-const styles = {
-  card: "group relative flex flex-col overflow-hidden rounded-[1.25rem] border border-neutral-200/70 bg-white transition-all duration-300 hover:border-neutral-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1",
-  coverImage: "relative h-44 w-full overflow-hidden bg-neutral-100",
-  imageOverlay:
-    "absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent",
-  badge:
-    "inline-flex items-center gap-1.5 rounded-lg bg-white/90 backdrop-blur-md px-2.5 py-1 shadow-sm border border-white/50",
-  badgeText:
-    "text-[10px] font-semibold uppercase tracking-wider text-neutral-700",
-  avatar:
-    "relative h-7 w-7 overflow-hidden rounded-full border border-neutral-200 shrink-0",
-  username: "text-xs font-medium text-neutral-500 truncate",
-  title:
-    "text-lg font-bold tracking-tight text-neutral-900 line-clamp-1 transition-colors group-hover:text-[#5865F2]",
-  description: "text-sm leading-relaxed text-neutral-600 line-clamp-2",
-  footer: "flex items-center justify-between border-t border-neutral-100 pt-3",
-  timestamp: "text-xs font-medium text-neutral-400",
-  link: "inline-flex items-center gap-1 text-xs font-semibold text-[#5865F2] transition-all group-hover:gap-1.5",
-} as const;
+const DEFAULT_COVER_IMAGE = "/assets/defaultcollectioncover.svg";
 
 function getTimeAgo(date: string | Date): string {
   const inputDate = new Date(date);
   if (isNaN(inputDate.getTime())) return "";
   const seconds = Math.floor((Date.now() - inputDate.getTime()) / 1000);
+
   if (seconds < 5) return "Just now";
   if (seconds < 60) return `${seconds}s`;
+
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
+
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
+
   const days = Math.floor(hours / 24);
   return days < 7 ? `${days}d` : inputDate.toLocaleDateString();
 }
 
 interface CollectionsProps {
   collections: Collection[];
-  showCoverImage?: boolean;
   variant?: "grid" | "list";
-  compact?: boolean;
   isOwner?: boolean;
+  showActions?: boolean;
 }
 
 export const Collections = ({
   collections,
-  showCoverImage = false,
   variant = "grid",
-  compact = false,
   isOwner = false,
+  showActions = true,
 }: CollectionsProps) => {
-  if (!collections || collections.length === 0) {
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+
+  const toggleMenu = (id: string) => {
+    setMenuOpen((prev) => (prev === id ? null : id));
+  };
+
+  const handleDeleteCollection = (id: string) => {
+    console.log("delete collection", id);
+  };
+
+  const handleShareCollection = (id: string) => {
+    console.log("share collection", id);
+  };
+
+  if (!collections?.length) {
     return (
-      <div className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50/50 p-20 text-center">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(88,101,242,0.05),transparent_70%)]" />
-        <div className="relative space-y-6">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-xl bg-white shadow-sm border border-neutral-200">
-            <Folder size={32} className="text-neutral-300" strokeWidth={1.5} />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-xl font-bold text-neutral-900">
-              No Collections Yet
-            </h3>
-            <p className="text-sm text-neutral-500 max-w-sm mx-auto">
-              Start organizing your snippets by creating your first collection.
-            </p>
-          </div>
-          <Link
-            href="/collections/new"
-            className="inline-flex items-center gap-2 rounded-full bg-[#5865F2] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#5865F2]/20 transition-all hover:bg-[#4752C4] hover:shadow-xl hover:shadow-[#5865F2]/30 hover:-translate-y-0.5"
-          >
-            Create Collection
-            <ChevronRight size={16} />
-          </Link>
-        </div>
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-16 text-center">
+        <Folder className="mx-auto mb-4 text-gray-300" size={40} />
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">
+          No Collections Yet
+        </h3>
+        <p className="text-sm text-gray-500 mb-6">
+          Start organizing your snippets by creating your first collection.
+        </p>
+
+        <Link
+          href="/collections/new"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-full text-sm font-semibold hover:bg-primary/90 transition"
+        >
+          Create Collection
+          <ChevronRight size={16} />
+        </Link>
       </div>
     );
   }
-
-  const getVisibilityIcon = (visibility: string) => {
-    switch (visibility) {
-      case "PUBLIC":
-        return <Eye className="w-3.5 h-3.5" />;
-      case "PRIVATE":
-        return <Lock className="w-3.5 h-3.5" />;
-      case "FOLLOWERS":
-        return <Users className="w-3.5 h-3.5" />;
-      default:
-        return <Eye className="w-3.5 h-3.5" />;
-    }
-  };
 
   return (
     <div
       className={
         variant === "grid"
-          ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
-          : "space-y-3"
+          ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          : "flex flex-col gap-4"
       }
     >
       {collections.map((collection) => {
@@ -122,154 +102,169 @@ export const Collections = ({
 
         if (variant === "grid") {
           return (
-            <div key={collection.id} className={styles.card}>
-              {/* Cover Image */}
-              <div className={styles.coverImage}>
+            <div
+              key={collection.id}
+              className="group bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md overflow-hidden transition-shadow cursor-pointer"
+              onClick={() =>
+                window.open(`/collection/${collection.id}`, "_blank")
+              }
+            >
+              {/* Cover */}
+              <div className="relative w-full aspect-[16/9]">
                 <Image
                   src={collection.coverImage || DEFAULT_COVER_IMAGE}
                   alt={collection.name}
                   fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  className="object-cover"
                   unoptimized
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                 />
-                <div className={styles.imageOverlay} />
 
-                {/* Floating Badges */}
-                <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
-                  <div className={styles.badge}>
-                    {getVisibilityIcon(collection.visibility)}
-                    <span className={styles.badgeText}>
-                      {collection.visibility}
-                    </span>
+                {/* Top Right Menu */}
+                {showActions && (
+                  <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition">
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleMenu(collection.id);
+                        }}
+                        className="w-8 h-8 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white hover:shadow-md"
+                      >
+                        <Ellipsis size={18} color="#4b5563" />
+                      </button>
+
+                      {menuOpen === collection.id && (
+                        <div
+                          className="absolute right-0 mt-2 w-44 bg-white rounded-lg shadow-lg border border-gray-200 z-30 py-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {isOwner && (
+                            <>
+                              <Link
+                                href={`/collection/${collection.id}/edit`}
+                                className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-primary/10 hover:text-primary"
+                              >
+                                <Edit size={16} className="mr-2" />
+                                Edit
+                              </Link>
+
+                              <button
+                                className="flex items-center w-full px-4 py-2 text-sm text-red-500 hover:bg-red-50"
+                                onClick={() =>
+                                  handleDeleteCollection(collection.id)
+                                }
+                              >
+                                <Trash size={16} className="mr-2" />
+                                Delete
+                              </button>
+                            </>
+                          )}
+
+                          <button
+                            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-primary/10 hover:text-primary"
+                            onClick={() => handleShareCollection(collection.id)}
+                          >
+                            <Share size={16} className="mr-2" />
+                            Share
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-
-                  {isOwner && (
-                    <Link
-                      href={`/collections/${collection.id}/edit`}
-                      className="flex items-center justify-center rounded-lg bg-white/90 backdrop-blur-md p-2 shadow-sm border border-white/50 opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-110"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Edit3 size={14} className="text-neutral-700" />
-                    </Link>
-                  )}
-                </div>
-
-                <div className="absolute bottom-3 right-3">
-                  <div className={styles.badge}>
-                    <FileText size={12} className="text-[#5865F2]" />
-                    <span className="text-xs font-semibold text-neutral-900">
-                      {postCount}
-                    </span>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Content */}
-              <div className="flex flex-1 flex-col p-5 space-y-3">
-                {/* Author */}
-                <div className="flex items-center gap-2.5">
-                  <div className={styles.avatar}>
+              <div className="p-5">
+                {/* User */}
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 rounded-full overflow-hidden bg-primary/20">
                     {collection.user?.avatar ? (
                       <Image
                         src={collection.user.avatar}
                         alt={collection.user.username}
-                        fill
+                        width={32}
+                        height={32}
                         className="object-cover"
+                        unoptimized
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-xs font-semibold text-neutral-500">
-                        {collection.user?.username?.[0].toUpperCase()}
-                      </div>
+                      <span className="flex items-center justify-center h-full text-sm font-semibold text-gray-700">
+                        {collection.user?.username?.[0]?.toUpperCase()}
+                      </span>
                     )}
                   </div>
-                  <span className={styles.username}>
-                    @{collection.user?.username}
-                  </span>
+
+                  <div>
+                    <h4 className="font-semibold text-gray-900">
+                      {collection.user?.username}
+                    </h4>
+                    <p className="text-xs text-gray-500">{timeLabel}</p>
+                  </div>
                 </div>
 
-                {/* Title & Description */}
-                <div className="space-y-2 flex-1">
-                  <h4 className={styles.title}>#{collection.name}</h4>
-                  <p className={styles.description}>
-                    {collection.description ||
-                      "No description provided for this collection."}
-                  </p>
-                </div>
+                {/* Title */}
+                <h3 className="font-semibold text-gray-900 mb-1 hover:text-primary transition line-clamp-1">
+                  {collection.name}
+                </h3>
+
+                {/* Description */}
+                <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                  {collection.description || "No description provided."}
+                </p>
 
                 {/* Footer */}
-                <div className={styles.footer}>
-                  <span className={styles.timestamp}>{timeLabel}</span>
-                  <Link
-                    href={`/collection/${collection.id}`}
-                    className={styles.link}
-                  >
-                    View <ChevronRight size={14} strokeWidth={2.5} />
-                  </Link>
+                <div className="flex items-center justify-between">
+                  <VisibilityTag visibility={collection.visibility} />
+
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <FileText size={16} />
+                    <span className="text-xs">{postCount}</span>
+                  </div>
                 </div>
               </div>
             </div>
           );
         }
 
-        // List Variant
+        // LIST VARIANT
+
         return (
           <Link
             key={collection.id}
-            href={`/collections/${collection.id}`}
-            className="group flex items-center gap-5 rounded-xl border border-neutral-200/70 bg-white p-4 transition-all duration-300 hover:border-neutral-300 hover:shadow-lg hover:shadow-neutral-200/50"
+            href={`/collection/${collection.id}`}
+            className="flex items-center gap-5 rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition"
           >
-            {/* Thumbnail */}
-            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg">
+            <div className="relative h-20 w-20 rounded-lg overflow-hidden">
               <Image
                 src={collection.coverImage || DEFAULT_COVER_IMAGE}
                 alt={collection.name}
                 fill
-                className="object-cover transition-transform duration-500 group-hover:scale-110"
+                className="object-cover"
                 unoptimized
               />
             </div>
 
-            {/* Content */}
-            <div className="flex-1 min-w-0 space-y-1">
-              <div className="flex items-center gap-2 text-xs">
-                <div className="inline-flex items-center gap-1.5 text-[#5865F2]">
-                  {getVisibilityIcon(collection.visibility)}
-                  <span className="font-semibold uppercase tracking-wider">
-                    {collection.visibility}
-                  </span>
-                </div>
-                <span className="text-neutral-300">•</span>
-                <span className="font-medium text-neutral-400">
-                  {timeLabel}
-                </span>
-              </div>
-
-              <h4 className="truncate text-base font-bold tracking-tight text-neutral-900 transition-colors group-hover:text-[#5865F2]">
-                #{collection.name}
+            <div className="flex-1 min-w-0">
+              <h4 className="text-base font-semibold text-gray-900 truncate">
+                {collection.name}
               </h4>
 
-              <p className="truncate text-sm text-neutral-500">
+              <p className="text-sm text-gray-500 truncate">
                 {collection.description || "No description"}
               </p>
+
+              <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                <VisibilityTag visibility={collection.visibility} />
+                <span>{timeLabel}</span>
+              </div>
             </div>
 
-            {/* Stats & Action */}
-            <div className="flex shrink-0 items-center gap-6">
-              <div className="flex flex-col items-center gap-1">
-                <div className="flex items-center gap-1.5 rounded-lg bg-neutral-50 px-3 py-1.5">
-                  <FileText size={14} className="text-[#5865F2]" />
-                  <span className="text-sm font-semibold text-neutral-900">
-                    {postCount}
-                  </span>
-                </div>
-                <span className="text-[10px] font-medium text-neutral-400 uppercase tracking-wider">
-                  Snippets
-                </span>
-              </div>
-
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-400 transition-all group-hover:bg-[#5865F2] group-hover:text-white group-hover:scale-110">
-                <ChevronRight size={18} strokeWidth={2.5} />
-              </div>
+            <div className="flex items-center gap-2 text-gray-500">
+              <FileText size={16} />
+              <span className="text-sm">{postCount}</span>
+              <ChevronRight size={18} />
             </div>
           </Link>
         );
