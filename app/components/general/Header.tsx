@@ -11,7 +11,7 @@ interface HeaderProps {
 
 export const Header = ({ userId }: HeaderProps) => {
   return (
-    <header className="sticky top-0 h-24 py-2 px-4 sm:px-6 flex items-center justify-between bg-white border-b border-gray-200 z-30">
+    <header className="sticky top-0 h-16 flex-shrink-0 px-4 sm:px-6 flex items-center justify-between bg-white border-b border-gray-200 z-30">
       {/* Mobile Logo */}
       <div className="md:hidden pl-4">
         <Image src={Logo} alt="Snippit Logo" width={100} height={32} />

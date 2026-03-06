@@ -5,18 +5,11 @@ import Link from "next/link";
 import {
   Folder,
   FileText,
-  ArrowRight,
   PenLine,
-  LayoutDashboard,
   Users,
   Heart,
   Plus,
-  TrendingUp,
-  MoreHorizontal,
-  Eye,
-  Sparkles,
   ChevronRight,
-  BookOpen,
 } from "lucide-react";
 import Button from "@/app/components/Button";
 import Snippet from "./Snippitt";
