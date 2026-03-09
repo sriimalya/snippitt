@@ -1,14 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Post } from "@/schemas/post";
-import { Visibility } from "@/schemas/post";
 import { VisibilityTag } from "./VisibilityTags";
-import {
-  Edit,
-  MessageCircle,
-  Ellipsis,
-  Clock,
-} from "lucide-react";
+import { Edit, MessageCircle, Ellipsis, Clock } from "lucide-react";
 import LikeButton from "./LikeButton";
 import AddCollectionButton from "./AddCollectionButton";
 import DeleteSnippitButton from "./DeleteSnippitButton";
@@ -64,7 +58,7 @@ const Snippet = ({
   }
 
   const handleCardClick = () => {
-    const link = post.linkTo || `/posts/${post.id}`;
+    const link = post.isDraft? `/posts/${post.id}/edit` : `/posts/${post.id}`;
     window.open(link, "_blank");
   };
 
@@ -75,7 +69,7 @@ const Snippet = ({
       <div
         className="relative bg-white border border-gray-100 rounded-xl 
 hover:border-gray-200 hover:shadow-sm transition-all cursor-pointer 
-flex flex-col sm:flex-row gap-4 p-2 group"
+flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
         onClick={handleCardClick}
       >
         {/* Top-right menu button */}
@@ -87,7 +81,7 @@ flex flex-col sm:flex-row gap-4 p-2 group"
             <div className="relative">
               <button
                 onClick={() => toggleMenu(post.id)}
-                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition"
+                className="w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white hover:shadow-md"
               >
                 <Ellipsis size={16} className="text-gray-500" />
               </button>
@@ -113,12 +107,13 @@ flex flex-col sm:flex-row gap-4 p-2 group"
                       <DeleteSnippitButton postId={post.id} />
                     </>
                   )}
-
-                  <ShareActionButton
-                    postId={post.id} 
-                    postTitle={post.title} 
-                    postDescription={post.description}
-                  />
+                  {!post.isDraft && (
+                    <ShareActionButton
+                      id={post.id}
+                      title={post.title}
+                      url={`${process.env.NEXT_PUBLIC_APP_URL}/posts/${post.id}`}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -136,12 +131,14 @@ flex flex-col sm:flex-row gap-4 p-2 group"
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-w-0 flex flex-col justify-between sm:pr-8">
+        <div className="flex-1 min-w-0 flex flex-col justify-between px-2 sm:mt-1">
           {/* Title + Description */}
           <div>
             <Link
-              href={`/posts/${post.id}`}
-              className="font-semibold text-gray-900 truncate group-hover:text-primary transition"
+              href={
+                post.isDraft ? `/posts/${post.id}/edit` : `/posts/${post.id}`
+              }
+              className="font-bold text-gray-900 truncate group-hover:text-primary transition"
             >
               {post.title}
             </Link>
@@ -170,7 +167,7 @@ flex flex-col sm:flex-row gap-4 p-2 group"
 
               {/* to be implemented */}
               <div className="flex items-center">
-                <div className="w-8 h-8 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center transition hover:bg-white hover:shadow-md">
+                <div className="p-1 cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none">
                   <MessageCircle
                     size={18}
                     strokeWidth={2}
@@ -210,13 +207,13 @@ flex flex-col sm:flex-row gap-4 p-2 group"
           fill
           className="object-cover"
           priority
-          unoptimized={true} // ← Add this
+          unoptimized={true}
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
         />
 
         {/* Floating Category Badge */}
         {post.category && (
-          <div className="absolute top-3 left-3 z-10">
+          <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
             <span className="backdrop-blur-md bg-white/70 text-[10px] font-bold uppercase tracking-wider text-gray-800 px-2.5 py-1 rounded-lg shadow-sm">
               {post.category}
             </span>
@@ -232,7 +229,7 @@ flex flex-col sm:flex-row gap-4 p-2 group"
                   e.stopPropagation();
                   toggleMenu(menuOpen === post.id ? "" : post.id);
                 }}
-                className="w-8 h-8 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white hover:shadow-md"
+                className="w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white hover:shadow-md"
                 aria-label="More options"
                 aria-haspopup="true"
                 aria-expanded={menuOpen === post.id}
@@ -261,12 +258,13 @@ flex flex-col sm:flex-row gap-4 p-2 group"
                       <DeleteSnippitButton postId={post.id} />
                     </>
                   )}
-
+                  {!post.isDraft && (
                   <ShareActionButton
-                    postId={post.id} 
-                    postTitle={post.title} 
-                    postDescription={post.description}
+                    id={post.id}
+                    title={post.title}
+                    url={`${process.env.NEXT_PUBLIC_APP_URL}/posts/${post.id}`}
                   />
+                  )}
                 </div>
               )}
             </div>
@@ -315,7 +313,7 @@ flex flex-col sm:flex-row gap-4 p-2 group"
         </div>
 
         <Link
-          href={post.linkTo || `/post/${post.id}`}
+          href={post.isDraft? `/posts/${post.id}/edit` : `/posts/${post.id}`}
           onClick={(e) => e.stopPropagation()}
         >
           <h3 className="text-base font-bold text-gray-900 leading-tight mb-2 group-hover:text-indigo-600 transition-colors line-clamp-1">
@@ -329,27 +327,34 @@ flex flex-col sm:flex-row gap-4 p-2 group"
 
         {/* 3. Footer Section */}
         <div className="mt-auto pt-4 border-t border-gray-50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex items-center gap-1"
-              onClick={(e) => e.stopPropagation()}
-            >
+          <div
+            className="flex items-center justify-between text-xs text-gray-500"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              {/* Like */}
               <LikeButton
                 postId={post.id}
                 initialIsLiked={post.isLiked}
                 initialLikeCount={post._count.likes}
               />
-            </div>
-            <div
-              className="flex items-center gap-1.5 text-gray-400 hover:text-indigo-500 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MessageCircle size={16} />
-              <span className="text-xs font-semibold tabular-nums">
-                {post._count.comments}
-              </span>
-            </div>
-            <div onClick={(e) => e.stopPropagation()}>
+
+              {/* to be implemented */}
+              <div className="flex items-center">
+                <div className="p-1 cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none">
+                  <MessageCircle
+                    size={18}
+                    strokeWidth={2}
+                    className="stroke-gray-500 hover:stroke-primary transition"
+                  />
+                </div>
+
+                <span className="text-xs tabular-nums text-gray-500">
+                  {post._count.comments}
+                </span>
+              </div>
+
+              {/* Saved */}
               <ToggleSaveButton
                 postId={post.id}
                 initialIsSaved={post.isSaved}
@@ -357,8 +362,14 @@ flex flex-col sm:flex-row gap-4 p-2 group"
               />
             </div>
           </div>
-
-          <VisibilityTag visibility={post.visibility} />
+          {post.isDraft ? (
+            <div className="flex items-center gap-1 bg-yellow-50 text-yellow-600 text-xs px-2 py-1 rounded-full font-medium">
+              <Clock size={12} />
+              Draft
+            </div>
+          ) : (
+            <VisibilityTag visibility={post.visibility} />
+          )}
         </div>
 
         {/* Tags */}
@@ -368,7 +379,7 @@ flex flex-col sm:flex-row gap-4 p-2 group"
               <Link
                 key={tag}
                 href={{
-                  pathname: "/explore/posts",
+                  pathname: post.isDraft? `/posts/${post.id}/edit` :"/explore/posts",
                   query: { tag },
                 }}
                 onClick={(e) => e.stopPropagation()}
