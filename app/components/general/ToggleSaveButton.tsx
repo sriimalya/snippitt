@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Bookmark } from "lucide-react";
 import { savePost, unsavePost } from "@/actions/save";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ const ToggleSaveButton: React.FC<ToggleSaveButtonProps> = ({
   const [isSaved, setIsSaved] = useState(initialIsSaved);
   const [count, setCount] = useState(initialSaveCount);
   const [isPending, setIsPending] = useState(false);
+  const router = useRouter();
 
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -42,6 +44,8 @@ const ToggleSaveButton: React.FC<ToggleSaveButtonProps> = ({
         setIsSaved(previous);
         setCount(initialSaveCount);
         toast.error(result.error?.message || "Failed to update save status");
+      } else{
+        router.refresh(); 
       }
     } catch {
       // 3️⃣ Rollback on network error
@@ -54,14 +58,11 @@ const ToggleSaveButton: React.FC<ToggleSaveButtonProps> = ({
   };
 
   return (
-    <div
-      className="flex items-center"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={handleToggle}
         disabled={isPending}
-        className="w-8 h-8 cursor-pointer bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center transition hover:bg-white hover:shadow-md active:scale-90 focus:outline-none"
+        className="p-1 cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none"
         aria-label={isSaved ? "Unsave" : "Save"}
       >
         <Bookmark

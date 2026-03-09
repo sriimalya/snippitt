@@ -56,7 +56,7 @@ const LikeButton: React.FC<LikeButtonProps> = ({
       <button
         onClick={handleLike}
         disabled={isPending}
-        className="w-8 h-8 cursor-pointer bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center transition hover:bg-white hover:shadow-md active:scale-90 focus:outline-none"
+        className="p-1 cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none"
         aria-label={liked ? "Unlike" : "Like"}
       >
         <Heart
