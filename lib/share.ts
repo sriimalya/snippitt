@@ -1,8 +1,8 @@
 // lib/share.ts
 import { toast } from "sonner";
 
-export const handleShare = async (title: string, text: string, url: string) => {
-  const shareData = { title, text, url };
+export const handleShare = async (title: string, url: string) => {
+  const shareData = { title, url };
 
   if (navigator.share) {
     try {

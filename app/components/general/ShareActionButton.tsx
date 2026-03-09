@@ -3,22 +3,21 @@ import { Check, Share } from "lucide-react";
 import { handleShare } from "@/lib/share";
 
 interface ShareActionButtonProps {
-  postId: string;
-  postTitle: string;
-  postDescription: string;
+  id: string;
+  title: string;
+  url: string;
 }
 const ShareActionButton: React.FC<ShareActionButtonProps> = ({
-  postId,
-  postTitle,
-  postDescription,
+  id,
+  title,
+  url,
 }) => {
   const [isCopied, setIsCopied] = useState(false);
   const onShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = `${process.env.NEXT_PUBLIC_APP_URL}/posts/${postId}`;
 
     // Using the utility we discussed
-    await handleShare(postTitle, postDescription, url);
+    await handleShare(title, url);
     setTimeout(() => setIsCopied(false), 3000);
   };
 
