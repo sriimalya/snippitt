@@ -13,6 +13,8 @@ interface GetMyPostsOptions {
   perPage?: number;
   category?: string;
   visibility?: "PUBLIC" | "PRIVATE" | "FOLLOWERS" | "DRAFT";
+  search?: string;
+  sort?: "asc" | "desc";
 }
 
 export async function getMyPosts(options: GetMyPostsOptions = {}): Promise<{
@@ -67,6 +69,13 @@ export async function getMyPosts(options: GetMyPostsOptions = {}): Promise<{
       }
     }
 
+    if (options.search) {
+      whereClause.OR = [
+        { title: { contains: options.search, mode: "insensitive" } },
+        { description: { contains: options.search, mode: "insensitive" } },
+      ];
+    }
+
     // 2. Fetch data in parallel
     const [posts, totalPosts] = await Promise.all([
       prisma.post.findMany({
@@ -103,7 +112,7 @@ export async function getMyPosts(options: GetMyPostsOptions = {}): Promise<{
           },
         },
         orderBy: {
-          createdAt: "desc",
+          createdAt: options.sort || "desc",
         },
         take: perPage,
         skip: skip,

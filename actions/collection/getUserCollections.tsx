@@ -11,6 +11,8 @@ interface GetCollectionsOptions {
   perPage?: number;
   userId?: string;
   visibility?: "PUBLIC" | "PRIVATE" | "FOLLOWERS" | "DRAFT";
+  search?: string;
+  sort?: "asc" | "desc";
 }
 
 // Reusable signing helper to handle logic in one place
@@ -84,6 +86,18 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
       ];
     }
 
+    if (options.search) {
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        {
+          OR: [
+            { name: { contains: options.search, mode: "insensitive" } },
+            { description: { contains: options.search, mode: "insensitive" } },
+          ],
+        },
+      ];
+    }
+
     // 2. Fetch Data
     const [collections, total] = await Promise.all([
       prisma.collection.findMany({
@@ -92,7 +106,7 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
           _count: { select: { posts: true } },
           user: { select: { id: true, username: true, avatar: true } },
         },
-        orderBy: { updatedAt: "desc" },
+        orderBy: { updatedAt: options.sort || "desc" },
         skip,
         take: perPage,
       }),

@@ -11,6 +11,8 @@ interface GetDraftPostsOptions {
   page?: number;
   perPage?: number;
   category?: string;
+  search?: string;
+  sort?: "asc" | "desc";
 }
 
 export async function getDraftPosts(
@@ -58,6 +60,13 @@ export async function getDraftPosts(
       whereClause.category = options.category;
     }
 
+    if (options.search) {
+      whereClause.OR = [
+        { title: { contains: options.search, mode: "insensitive" } },
+        { description: { contains: options.search, mode: "insensitive" } },
+      ];
+    }
+
     const [posts, totalPosts] = await Promise.all([
       prisma.post.findMany({
         where: whereClause,
@@ -93,7 +102,7 @@ export async function getDraftPosts(
           },
         },
         orderBy: {
-          updatedAt: "desc",
+          updatedAt: options.sort || "desc",
         },
         take: perPage,
         skip,

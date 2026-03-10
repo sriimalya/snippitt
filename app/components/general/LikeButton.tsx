@@ -20,6 +20,12 @@ const LikeButton: React.FC<LikeButtonProps> = ({
   const [count, setCount] = useState(initialLikeCount);
   const [isPending, setIsPending] = useState(false);
 
+  // Sync state when props change (e.g., from router.refresh())
+  React.useEffect(() => {
+    setLiked(initialIsLiked);
+    setCount(initialLikeCount);
+  }, [initialIsLiked, initialLikeCount]);
+
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isPending) return;
@@ -49,10 +55,7 @@ const LikeButton: React.FC<LikeButtonProps> = ({
   };
 
   return (
-    <div
-      className="flex items-center"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={handleLike}
         disabled={isPending}

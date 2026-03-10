@@ -81,8 +81,7 @@ const PostDetailClient = ({ post, currentUserId }: any) => {
                     @{post.user.username}
                   </h4>
                   <p className="text-xs text-gray-400 font-bold flex items-center gap-1.5 uppercase tracking-wider">
-                    <Calendar size={12} />{" "}
-                    {formattedDate || "Loading date..."}
+                    <Calendar size={12} /> {formattedDate || "Loading date..."}
                   </p>
                 </div>
               </Link>
@@ -128,7 +127,10 @@ const PostDetailClient = ({ post, currentUserId }: any) => {
           </div>
 
           {/* Comment Section Integration */}
-          <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm">
+          <div
+            id="comments"
+            className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm"
+          >
             <CommentSection
               postId={post.id}
               postOwnerId={post.user.id}

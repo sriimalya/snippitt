@@ -10,6 +10,7 @@ interface GetSavedOptions {
   page?: number;
   perPage?: number;
   search?: string;
+  sort?: "asc" | "desc";
 }
 
 async function getSignedUrl(url: string | null | undefined) {
@@ -72,7 +73,7 @@ export async function getSavedPosts(options: any = {}) {
             },
           },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: options.sort || "desc" },
         skip,
         take: perPage,
       }),
@@ -92,7 +93,7 @@ export async function getSavedPosts(options: any = {}) {
 
         const [signedCoverUrl, signedAuthorAvatar] = await Promise.all([
           getSignedUrl(post.images[0]?.url),
-          getSignedUrl(post.user.avatar), 
+          getSignedUrl(post.user.avatar),
         ]);
 
         return {
@@ -115,7 +116,7 @@ export async function getSavedPosts(options: any = {}) {
             url: signedCoverUrl || img.url,
             isCover: img.isCover,
             description: img.description || null,
-            createdAt: post.createdAt, 
+            createdAt: post.createdAt,
             updatedAt: post.updatedAt,
           })),
           tags: post.tags.map((t) => t.tag.name),

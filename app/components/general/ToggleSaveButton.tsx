@@ -22,6 +22,12 @@ const ToggleSaveButton: React.FC<ToggleSaveButtonProps> = ({
   const [isPending, setIsPending] = useState(false);
   const router = useRouter();
 
+  // Sync state when props change (e.g., from router.refresh())
+  React.useEffect(() => {
+    setIsSaved(initialIsSaved);
+    setCount(initialSaveCount);
+  }, [initialIsSaved, initialSaveCount]);
+
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isPending) return;
@@ -44,8 +50,8 @@ const ToggleSaveButton: React.FC<ToggleSaveButtonProps> = ({
         setIsSaved(previous);
         setCount(initialSaveCount);
         toast.error(result.error?.message || "Failed to update save status");
-      } else{
-        router.refresh(); 
+      } else {
+        router.refresh();
       }
     } catch {
       // 3️⃣ Rollback on network error

@@ -23,14 +23,27 @@ import {
 
 interface MyPostComponentProps {
   initialData: any;
-  filters: { currentPage: number; category: string; visibility: string };
+  filters: {
+    currentPage: number;
+    category: string;
+    visibility: string;
+    search?: string;
+    sort?: string;
+  };
 }
 
 const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
-  const { currentPage, category, visibility } = filters;
+  const {
+    currentPage,
+    category,
+    visibility,
+    search = "",
+    sort = "desc",
+  } = filters;
+  const [searchInput, setSearchInput] = useState(search);
   const searchParams = useSearchParams();
   const router = useRouter();
-  
+
   // Use transition to show a loading state during server re-fetches
   const [isPending, startTransition] = useTransition();
 
@@ -44,7 +57,7 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
   // Helper to update URL and trigger Server Component re-fetch
   const updateFilters = (newParams: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());
-    
+
     Object.entries(newParams).forEach(([key, value]) => {
       if (value) params.set(key, value);
       else params.delete(key);
@@ -67,8 +80,9 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
   const categories = Object.values(Category);
 
   return (
-    <div className={`max-w-7xl mx-auto px-6 py-10 space-y-10 transition-opacity ${isPending ? "opacity-60" : "opacity-100"}`}>
-
+    <div
+      className={`max-w-7xl mx-auto px-6 py-10 space-y-10 transition-opacity ${isPending ? "opacity-60" : "opacity-100"}`}
+    >
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -81,7 +95,11 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
         </div>
 
         <Link href="/create-post" className="w-full sm:w-auto">
-          <Button variant="primary" size="md" className="flex items-center justify-center gap-1 w-full sm:w-auto">
+          <Button
+            variant="primary"
+            size="md"
+            className="flex items-center justify-center gap-1 w-full sm:w-auto"
+          >
             <Plus size={16} />
             New Post
           </Button>
@@ -90,39 +108,89 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
 
       {/* Stats Section */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard 
-            value={pagination.totalPosts || 0} 
-            label="Total Posts" 
-            icon={<FileText className="w-5 h-5 text-[#5865F2]" />} 
-            bgColor="bg-indigo-50" 
+        <StatCard
+          value={pagination.totalPosts || 0}
+          label="Total Posts"
+          icon={<FileText className="w-5 h-5 text-[#5865F2]" />}
+          bgColor="bg-indigo-50"
         />
-        <StatCard 
-            value={posts.reduce((sum: number, p: any) => sum + (p._count?.likes || 0), 0)} 
-            label="Total Likes" 
-            icon={<Heart className="w-5 h-5 text-red-600" />} 
-            bgColor="bg-rose-50" 
+        <StatCard
+          value={posts.reduce(
+            (sum: number, p: any) => sum + (p._count?.likes || 0),
+            0,
+          )}
+          label="Total Likes"
+          icon={<Heart className="w-5 h-5 text-red-600" />}
+          bgColor="bg-rose-50"
         />
-        <StatCard 
-            value={posts.reduce((sum: number, p: any) => sum + (p._count?.comments || 0), 0)} 
-            label="Total Comments" 
-            icon={<MessageCircle className="w-5 h-5 text-blue-600" />} 
-            bgColor="bg-blue-50" 
+        <StatCard
+          value={posts.reduce(
+            (sum: number, p: any) => sum + (p._count?.comments || 0),
+            0,
+          )}
+          label="Total Comments"
+          icon={<MessageCircle className="w-5 h-5 text-blue-600" />}
+          bgColor="bg-blue-50"
         />
-        <StatCard 
-            value={posts.reduce((sum: number, p: any) => sum + (p._count?.savedBy || 0), 0)} 
-            label="Saved By" 
-            icon={<Bookmark className="w-5 h-5 text-purple-600" />} 
-            bgColor="bg-purple-50" 
+        <StatCard
+          value={posts.reduce(
+            (sum: number, p: any) => sum + (p._count?.savedBy || 0),
+            0,
+          )}
+          label="Saved By"
+          icon={<Bookmark className="w-5 h-5 text-purple-600" />}
+          bgColor="bg-purple-50"
         />
       </div>
 
       {/* Filters + Controls */}
       <section className="space-y-6">
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
-          
-          {/* Category Dropdown */}
-          <div className="flex items-center gap-4">
-            <div className="relative w-72">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Search */}
+            <div className="relative w-64">
+              <input
+                type="text"
+                placeholder="Search posts..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    updateFilters({ search: searchInput });
+                  }
+                }}
+                className="w-full pl-4 pr-10 py-3 bg-white border border-gray-200 rounded-2xl text-sm text-gray-700 shadow-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 appearance-none"
+              />
+              {searchInput && (
+                <button
+                  onClick={() => {
+                    setSearchInput("");
+                    updateFilters({ search: null });
+                  }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Sort */}
+            <div className="relative">
+              <select
+                value={sort}
+                onChange={(e) => updateFilters({ sort: e.target.value })}
+                className="pl-4 pr-10 py-3 bg-white border border-gray-200 rounded-2xl text-sm text-gray-700 shadow-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 appearance-none"
+              >
+                <option value="desc">Newest First</option>
+                <option value="asc">Oldest First</option>
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                <Filter className="w-4 h-4 text-gray-400" />
+              </div>
+            </div>
+
+            {/* Category Dropdown */}
+            <div className="relative w-48">
               <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <select
                 value={category}
@@ -131,7 +199,9 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
               >
                 <option value="">All Categories</option>
                 {categories.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
                 ))}
               </select>
             </div>
@@ -163,8 +233,14 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
               </button>
             </div>
 
-            <button onClick={handleRefresh} disabled={isPending} className="p-2 hover:bg-gray-100 rounded-full transition">
-              <RefreshCw className={`w-5 h-5 text-gray-600 ${isPending ? "animate-spin" : ""}`} />
+            <button
+              onClick={handleRefresh}
+              disabled={isPending}
+              className="p-2 hover:bg-gray-100 rounded-full transition"
+            >
+              <RefreshCw
+                className={`w-5 h-5 text-gray-600 ${isPending ? "animate-spin" : ""}`}
+              />
             </button>
           </div>
         </div>
@@ -192,13 +268,21 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
         <div className="bg-white rounded-2xl border border-dashed border-primary/50 p-12 text-center">
           <FileText className="w-10 h-10 text-gray-400 mx-auto mb-4" />
           <h3 className="text-xl font-semibold">No snippets found</h3>
-          <p className="text-gray-600 mb-6">Start sharing your snippets with the community.</p>
+          <p className="text-gray-600 mb-6">
+            Start sharing your snippets with the community.
+          </p>
           <Button onClick={() => router.push("/create-post")}>
             <Plus className="w-4 h-4 mr-1" /> Create Snippet
           </Button>
         </div>
       ) : (
-        <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
+        <div
+          className={
+            viewMode === "grid"
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              : "flex flex-col gap-4"
+          }
+        >
           {posts.map((post: any) => (
             <Snippet
               key={post.id}
@@ -219,7 +303,9 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
           </p>
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => updateFilters({ page: (pagination.currentPage - 1).toString() })}
+              onClick={() =>
+                updateFilters({ page: (pagination.currentPage - 1).toString() })
+              }
               disabled={!pagination.hasPrevPage || isPending}
               variant="outline"
               size="sm"
@@ -227,7 +313,9 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
               <ChevronLeft size={16} />
             </Button>
             <Button
-              onClick={() => updateFilters({ page: (pagination.currentPage + 1).toString() })}
+              onClick={() =>
+                updateFilters({ page: (pagination.currentPage + 1).toString() })
+              }
               disabled={!pagination.hasNextPage || isPending}
               variant="outline"
               size="sm"
@@ -242,17 +330,21 @@ const MyPostComponent = ({ initialData, filters }: MyPostComponentProps) => {
 };
 
 const StatCard = ({ value, label, icon, bgColor }: any) => (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-3xl font-black text-gray-900 tabular-nums">{value}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-        </div>
-        <div className={`w-10 h-10 ${bgColor} rounded-xl flex items-center justify-center`}>
-          {icon}
-        </div>
+  <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-3xl font-black text-gray-900 tabular-nums">
+          {value}
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+      </div>
+      <div
+        className={`w-10 h-10 ${bgColor} rounded-xl flex items-center justify-center`}
+      >
+        {icon}
       </div>
     </div>
+  </div>
 );
 
 export default MyPostComponent;

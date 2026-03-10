@@ -43,7 +43,7 @@ export async function sendPasswordResetToken(
     if (!user) {
       return {
         success: false,
-        message: "No account found with this email",
+        message: "Invalid Email or Password",
         code: "USER_NOT_FOUND",
       };
     }

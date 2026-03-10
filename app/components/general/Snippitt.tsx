@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Post } from "@/schemas/post";
@@ -28,6 +31,25 @@ const Snippet = ({
   currentUserId,
   variant = "default",
 }: SnippetProps) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        menuOpen === post.id &&
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
+      ) {
+        toggleMenu("");
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [menuOpen, post.id, toggleMenu]);
+
   function timeAgo(date: string | Date): string {
     const inputDate = new Date(date);
     if (isNaN(inputDate.getTime())) return "";
@@ -58,7 +80,7 @@ const Snippet = ({
   }
 
   const handleCardClick = () => {
-    const link = post.isDraft? `/posts/${post.id}/edit` : `/posts/${post.id}`;
+    const link = post.isDraft ? `/posts/${post.id}/edit` : `/posts/${post.id}`;
     window.open(link, "_blank");
   };
 
@@ -78,7 +100,7 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
             className="absolute top-3 right-3 z-20"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative">
+            <div className="relative" ref={menuRef}>
               <button
                 onClick={() => toggleMenu(post.id)}
                 className="w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white hover:shadow-md"
@@ -165,8 +187,12 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
                 initialLikeCount={post._count.likes}
               />
 
-              {/* to be implemented */}
-              <div className="flex items-center">
+              {/* Link to Comments */}
+              <Link
+                href={`/posts/${post.id}#comments`}
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center"
+              >
                 <div className="p-1 cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none">
                   <MessageCircle
                     size={18}
@@ -178,7 +204,7 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
                 <span className="text-xs tabular-nums text-gray-500">
                   {post._count.comments}
                 </span>
-              </div>
+              </Link>
 
               {/* Saved */}
               <ToggleSaveButton
@@ -223,7 +249,7 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
         {/* Top-right Buttons */}
         {showActions && (
           <div className="absolute top-3 right-3 z-10 transition">
-            <div className="relative">
+            <div className="relative" ref={menuRef}>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -259,11 +285,11 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
                     </>
                   )}
                   {!post.isDraft && (
-                  <ShareActionButton
-                    id={post.id}
-                    title={post.title}
-                    url={`${process.env.NEXT_PUBLIC_APP_URL}/posts/${post.id}`}
-                  />
+                    <ShareActionButton
+                      id={post.id}
+                      title={post.title}
+                      url={`${process.env.NEXT_PUBLIC_APP_URL}/posts/${post.id}`}
+                    />
                   )}
                 </div>
               )}
@@ -313,7 +339,7 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
         </div>
 
         <Link
-          href={post.isDraft? `/posts/${post.id}/edit` : `/posts/${post.id}`}
+          href={post.isDraft ? `/posts/${post.id}/edit` : `/posts/${post.id}`}
           onClick={(e) => e.stopPropagation()}
         >
           <h3 className="text-base font-bold text-gray-900 leading-tight mb-2 group-hover:text-indigo-600 transition-colors line-clamp-1">
@@ -339,8 +365,12 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
                 initialLikeCount={post._count.likes}
               />
 
-              {/* to be implemented */}
-              <div className="flex items-center">
+              {/* Link to Comments */}
+              <Link
+                href={`/posts/${post.id}#comments`}
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center"
+              >
                 <div className="p-1 cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none">
                   <MessageCircle
                     size={18}
@@ -352,7 +382,7 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
                 <span className="text-xs tabular-nums text-gray-500">
                   {post._count.comments}
                 </span>
-              </div>
+              </Link>
 
               {/* Saved */}
               <ToggleSaveButton
@@ -379,7 +409,9 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
               <Link
                 key={tag}
                 href={{
-                  pathname: post.isDraft? `/posts/${post.id}/edit` :"/explore/posts",
+                  pathname: post.isDraft
+                    ? `/posts/${post.id}/edit`
+                    : "/explore/posts",
                   query: { tag },
                 }}
                 onClick={(e) => e.stopPropagation()}

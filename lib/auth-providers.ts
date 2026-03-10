@@ -48,7 +48,7 @@ export const authOptions: NextAuthOptions = {
           if (!user) {
             throw new AuthError(
               "USER_NOT_FOUND",
-              "No account found with this email",
+              "Invalid Email or Password",
               404
             );
           }
