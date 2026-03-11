@@ -1,12 +1,17 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, {
+  useRef,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 import Image from "next/image";
 import Button from "@/app/components/Button";
-import Dropdown from "@/app/components/inputFields/Dropdown";
 import {
   Upload,
   Image as ImageIcon,
@@ -20,21 +25,18 @@ import {
   ArrowLeft,
   Star,
   FileText,
-  Grid,
-  List,
   Save,
   Eye as EyeIcon,
-  BookOpen,
   Zap,
   Camera,
   Trash2,
-  Info,
   X,
   Search,
   Sparkles,
   Hash,
-  ChevronUp,
+  Tag,
   ChevronDown,
+  Maximize2,
 } from "lucide-react";
 import { getPost } from "@/actions/posts/getPost";
 import { deletePost } from "@/actions/posts/deletePost";
@@ -42,9 +44,8 @@ import { Category, Visibility } from "@/app/generated/prisma/enums";
 import type { Post } from "@/schemas/post";
 import { updatePost } from "@/actions/posts/updatePost";
 import { generatePresignedUrlAction } from "@/actions/upload";
-import { getTags } from "@/actions/tags";
+import { getTags, checkTagExists } from "@/actions/tags";
 
-// Types for file handling
 interface FileWithMetadata {
   id: string;
   file: File | null;
@@ -59,35 +60,78 @@ interface FileWithMetadata {
   existingImageId?: string;
 }
 
-interface CategoryOption {
-  value: Category;
-  label: string;
-}
+const inputBase =
+  "w-full px-4 py-3 rounded-xl border bg-gray-50 focus:bg-white text-sm text-gray-900 placeholder-gray-400 outline-none transition-all";
 
-interface VisibilityOption {
-  value: Visibility;
+const inputClass = (hasError = false) =>
+  `${inputBase} focus:ring-2 ${
+    hasError
+      ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+      : "border-gray-200 hover:border-indigo-200 focus:border-indigo-500 focus:ring-indigo-100"
+  }`;
+
+const Field = ({
+  label,
+  counter,
+  error,
+  children,
+}: {
   label: string;
-  icon: React.ComponentType;
-  desc: string;
-}
+  counter?: string;
+  error?: string;
+  children: React.ReactNode;
+}) => (
+  <div className="space-y-2">
+    <div className="flex items-center justify-between px-0.5">
+      <label className="text-sm font-semibold text-gray-900">{label}</label>
+      {counter && (
+        <span className="text-xs text-gray-400 tabular-nums">{counter}</span>
+      )}
+    </div>
+    {children}
+    {error && (
+      <p className="flex items-center gap-1.5 text-xs text-red-600 font-medium">
+        <span className="w-1 h-1 rounded-full bg-red-500 inline-block flex-shrink-0" />
+        {error}
+      </p>
+    )}
+  </div>
+);
 
 const MAX_SIZE_MB = 10;
 const MAX_FILES = 10;
+
+const VISIBILITY_OPTIONS: {
+  value: Visibility;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  desc: string;
+}[] = [
+  { value: "PRIVATE", label: "Private", icon: Lock, desc: "Only you" },
+  {
+    value: "FOLLOWERS",
+    label: "Followers",
+    icon: Users,
+    desc: "Followers only",
+  },
+  { value: "PUBLIC", label: "Public", icon: Globe, desc: "Everyone" },
+];
 
 const EditPostForm = () => {
   const params = useParams();
   const router = useRouter();
   const postId = params.id as string;
 
+  /* state */
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [post, setPost] = useState<Post | null>(null);
   const [files, setFiles] = useState<FileWithMetadata[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [viewMode, setViewMode] = useState<"details" | "media">("details");
-  const [fileViewMode, setFileViewMode] = useState<"grid" | "list">("grid");
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [viewMode, setViewMode] = useState<"details" | "media">("media");
   const [selectedVisibility, setSelectedVisibility] =
     useState<Visibility>("PRIVATE");
 
@@ -98,20 +142,60 @@ const EditPostForm = () => {
     tags: [] as string[],
   });
 
-  const [showAllTags, setShowAllTags] = useState(false);
+  /* tag state */
   const [tagSearch, setTagSearch] = useState("");
-
   const [dbTags, setDbTags] = useState<string[]>([]);
+  const [isTagInDb, setIsTagInDb] = useState(false);
+  const [isCheckingTag, setIsCheckingTag] = useState(false);
+
+  const [isMobile, setIsMobile] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  }, []);
+
+  const cameraPhotoRef = useRef<HTMLInputElement>(null);
+  const cameraVideoRef = useRef<HTMLInputElement>(null);
+
+  const [previewFile, setPreviewFile] = useState<{
+    src: string;
+    type: "image" | "video";
+    name: string;
+  } | null>(null);
+
+  /* ── fetch tags ── */
+  useEffect(() => {
+    getTags().then((res) => {
+      if (res.success && res.data) setDbTags(res.data);
+    });
+  }, []);
 
   useEffect(() => {
-    const fetchTags = async () => {
-      const res = await getTags();
-      if (res.success && res.data) {
-        setDbTags(res.data);
-      }
+    if (tagSearch.trim().length < 2) {
+      setIsTagInDb(false);
+      setIsCheckingTag(false);
+      return;
+    }
+
+    // Mark as checking immediately — before the debounce fires
+    setIsCheckingTag(true);
+    setIsTagInDb(false); // reset stale result
+
+    const delayDebounceFn = setTimeout(async () => {
+      const capturedSearch = tagSearch.trim(); // capture for closure safety
+      const { exists } = await checkTagExists(capturedSearch);
+
+      // Only update if tagSearch hasn't changed since this check started
+      setIsTagInDb(exists);
+      setIsCheckingTag(false);
+    }, 300);
+
+    return () => {
+      clearTimeout(delayDebounceFn);
+      // Don't reset isCheckingTag here — the cleanup fires on every keystroke
+      // and would immediately hide the pending state
     };
-    fetchTags();
-  }, []);
+  }, [tagSearch]);
 
   const tagOptions = useMemo(() => {
     const baseTags = [
@@ -125,77 +209,61 @@ const EditPostForm = () => {
       "Food",
       "Health",
       "Education",
-      "Science",
-      "Music",
-      "Sports",
-      "Finance",
-      "Marketing",
-      "Writing",
     ];
-    // Combine base tags and DB tags, ensuring uniqueness by lowercasing
-    const allTagsMap = new Map<string, string>();
-
-    // Add base tags first
-    baseTags.forEach((tag) => {
-      allTagsMap.set(tag.toLowerCase(), tag);
+    const map = new Map<string, string>();
+    baseTags.forEach((t) => map.set(t.toLowerCase(), t));
+    dbTags.forEach((t) => {
+      map.set(t.toLowerCase(), t.charAt(0).toUpperCase() + t.slice(1));
     });
-
-    // Add DB tags (can override case of base tags if they match)
-    dbTags.forEach((tag) => {
-      // Capitalize first letter for display if it's purely lowercase, otherwise keep as is
-      const displayTag =
-        tag.charAt(0) === tag.charAt(0).toLowerCase()
-          ? tag.charAt(0).toUpperCase() + tag.slice(1)
-          : tag;
-      allTagsMap.set(tag.toLowerCase(), displayTag);
-    });
-
-    return Array.from(allTagsMap.values());
+    return Array.from(map.values());
   }, [dbTags]);
 
   const filteredTags = useMemo(() => {
     if (!tagSearch.trim()) return tagOptions;
-    return tagOptions.filter((tag) =>
-      tag.toLowerCase().includes(tagSearch.toLowerCase()),
+    return tagOptions.filter((t) =>
+      t.toLowerCase().includes(tagSearch.toLowerCase()),
     );
   }, [tagOptions, tagSearch]);
 
-  const displayedTags = showAllTags ? filteredTags : filteredTags.slice(0, 12);
+  const displayedTags = filteredTags;
 
-  // Fetch post data
+  const canCreateTag = useMemo(() => {
+    const searchLower = tagSearch.trim().toLowerCase();
+    if (!searchLower) return false;
+    if (isCheckingTag) return false;
+
+    const inVisibleList = tagOptions.some(
+      (t) => t.toLowerCase() === searchLower,
+    );
+    const isAlreadySelected = formData.tags.some(
+      (t) => t.toLowerCase() === searchLower,
+    );
+
+    return !inVisibleList && !isAlreadySelected && !isTagInDb;
+  }, [tagSearch, tagOptions, formData.tags, isTagInDb, isCheckingTag]);
+
+  /* ── fetch post ── */
   useEffect(() => {
-    const fetchPostData = async () => {
-      if (!postId) return;
-
+    if (!postId) return;
+    (async () => {
       try {
         setIsLoading(true);
         const result = await getPost(postId);
-
         if (result.success && result.data) {
-          const postData = result.data;
-
-          // Set post data
-          setPost(postData);
-
-          // Set form data
+          const d = result.data;
+          setPost(d);
           setFormData({
-            title: postData.title,
-            description: postData.description,
-            category: postData.category as Category,
-            tags: postData.tags || [],
+            title: d.title,
+            description: d.description,
+            category: d.category as Category,
+            tags: d.tags || [],
           });
-
-          setSelectedVisibility(postData.visibility || "PRIVATE");
-
-          // Transform existing images to FileWithMetadata format
-          // Note: We need to fetch images separately since getPost doesn't include all images
-          // This will be fixed when we update getPost to include all images
-          // In EditPostForm.tsx fetchPostData function:
-          const existingFiles: FileWithMetadata[] = postData.images.map(
-            (img: any, index: number) => ({
-              id: img.id || `existing-${index}`,
+          setSelectedVisibility(d.visibility || "PRIVATE");
+          setFiles(
+            d.images.map((img: any, i: number) => ({
+              id: img.id || `existing-${i}`,
               file: null,
-              preview: img.url, // This should now have the signed URL
+              preview: img.url,
               description: img.description || "",
               uploadProgress: 100,
               isUploaded: true,
@@ -205,68 +273,92 @@ const EditPostForm = () => {
                 ? "video"
                 : "image",
               existingImageId: img.id,
-            }),
+            })),
           );
-
-          setFiles(existingFiles);
         } else {
           toast.error(result.message || "Failed to load post");
           router.push("/my-posts");
         }
-      } catch (error) {
-        console.error("Failed to fetch post:", error);
+      } catch {
         toast.error("Failed to load post");
         router.push("/my-posts");
       } finally {
         setIsLoading(false);
       }
-    };
-
-    fetchPostData();
+    })();
   }, [postId, router]);
 
-  // File type detection
-  const detectFileType = useCallback((file: File): "image" | "video" => {
-    return file.type.startsWith("image/") ? "image" : "video";
-  }, []);
+  /* cleanup blob URLs on unmount */
+  useEffect(() => {
+    return () => {
+      files.forEach((f) => {
+        if (f.preview.startsWith("blob:")) URL.revokeObjectURL(f.preview);
+      });
+    };
+  }, [files]);
 
-  // File drop handler
+  /* ── derived ── */
+  const stats = useMemo(
+    () => ({
+      total: files.length,
+      uploaded: files.filter((f) => f.isUploaded).length,
+      images: files.filter((f) => f.fileType === "image").length,
+      videos: files.filter((f) => f.fileType === "video").length,
+    }),
+    [files],
+  );
+
+  /* ── file helpers ── */
+  const detectFileType = useCallback(
+    (file: File): "image" | "video" =>
+      file.type.startsWith("image/") ? "image" : "video",
+    [],
+  );
+
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      if (files.length + acceptedFiles.length > MAX_FILES) {
+    (accepted: File[], rejected: any[]) => {
+      // 1. Add rejected array here
+      // Handle manual limit for total files
+      if (files.length + accepted.length > MAX_FILES) {
         toast.error(`Maximum ${MAX_FILES} files allowed`);
         return;
       }
 
-      const validFiles = acceptedFiles.filter((file) => {
-        const isWithinSizeLimit = file.size <= MAX_SIZE_MB * 1024 * 1024;
-        if (!isWithinSizeLimit) {
-          toast.error(`"${file.name}" exceeds ${MAX_SIZE_MB}MB`);
-          return false;
-        }
-        return true;
-      });
+      // 2. Handle automatic rejections (Size or Type)
+      if (rejected.length > 0) {
+        rejected.forEach(({ file, errors }) => {
+          errors.forEach((err: any) => {
+            if (err.code === "file-too-large") {
+              toast.error(`"${file.name}" is too large. Max ${MAX_SIZE_MB}MB`);
+            }
+            if (err.code === "file-invalid-type") {
+              toast.error(`"${file.name}" is an unsupported file type`);
+            }
+          });
+        });
+      }
 
-      const newFiles: FileWithMetadata[] = validFiles.map((file) => ({
+      // 3. Process the valid files
+      // (You can remove your manual size check inside the filter now)
+      const newFiles = accepted.map((f) => ({
         id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        file,
-        preview: URL.createObjectURL(file),
+        file: f,
+        preview: URL.createObjectURL(f),
         description: "",
         uploadProgress: 0,
         isUploaded: false,
-        isCover: files.length === 0 && detectFileType(file) === "image", // Auto-set cover if first image
-        fileType: detectFileType(file),
+        isCover: files.length === 0 && detectFileType(f) === "image",
+        fileType: detectFileType(f),
       }));
 
-      setFiles((prev) => [...prev, ...newFiles]);
-      if (validFiles.length > 0) {
-        toast.success(`${validFiles.length} file(s) added`);
+      if (newFiles.length > 0) {
+        setFiles((prev) => [...prev, ...newFiles]);
+        toast.success(`${newFiles.length} file(s) added`);
       }
     },
     [files.length, detectFileType],
   );
 
-  // Dropzone configuration
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -277,644 +369,646 @@ const EditPostForm = () => {
     maxSize: MAX_SIZE_MB * 1024 * 1024,
   });
 
-  // Remove a file
+  const handleCameraCapture = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.files?.length) return;
+
+      const accepted: File[] = [];
+      const rejected: {
+        file: File;
+        errors: { code: string; message: string }[];
+      }[] = [];
+
+      Array.from(e.target.files).forEach((file) => {
+        const errors: { code: string; message: string }[] = [];
+
+        if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+          errors.push({
+            code: "file-too-large",
+            message: `File exceeds ${MAX_SIZE_MB}MB`,
+          });
+        }
+
+        if (
+          !file.type.startsWith("image/") &&
+          !file.type.startsWith("video/")
+        ) {
+          errors.push({
+            code: "file-invalid-type",
+            message: "Unsupported file type",
+          });
+        }
+
+        if (errors.length > 0) {
+          rejected.push({ file, errors });
+        } else {
+          accepted.push(file);
+        }
+      });
+
+      // Handle rejections as before
+      if (rejected.length > 0) {
+        rejected.forEach(({ file, errors }) => {
+          errors.forEach((err) => {
+            if (err.code === "file-too-large")
+              toast.error(`"${file.name}" is too large. Max ${MAX_SIZE_MB}MB`);
+            if (err.code === "file-invalid-type")
+              toast.error(`"${file.name}" is an unsupported file type`);
+          });
+        });
+      }
+
+      if (!accepted.length) return;
+
+      if (files.length + accepted.length > MAX_FILES) {
+        toast.error(`Maximum ${MAX_FILES} files allowed`);
+        return;
+      }
+
+      // Use FileReader for camera files instead of createObjectURL
+      accepted.forEach((file) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const preview = reader.result as string; // base64 data URL — reliable on all mobile browsers
+
+          setFiles((prev) => [
+            ...prev,
+            {
+              id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              file,
+              preview, // ← data URL instead of blob URL
+              description: "",
+              uploadProgress: 0,
+              isUploaded: false,
+              isCover: prev.length === 0 && detectFileType(file) === "image",
+              fileType: detectFileType(file),
+            },
+          ]);
+        };
+        reader.readAsDataURL(file);
+      });
+
+      toast.success(`${accepted.length} file(s) added`);
+      e.target.value = "";
+    },
+    [files.length, detectFileType],
+  );
+
   const removeFile = useCallback((index: number) => {
     setFiles((prev) => {
-      const newFiles = [...prev];
-      const removedFile = newFiles.splice(index, 1)[0];
-
-      // Revoke object URL to prevent memory leaks
-      if (!removedFile.isUploaded && removedFile.preview.startsWith("blob:")) {
-        URL.revokeObjectURL(removedFile.preview);
-      }
-
-      // If removed file was cover, auto-select new cover
-      if (removedFile.isCover) {
-        const firstImageIndex = newFiles.findIndex(
-          (f) => f.fileType === "image",
-        );
-        if (firstImageIndex !== -1) {
-          newFiles[firstImageIndex].isCover = true;
-          toast.info("New cover image auto-selected");
+      const next = [...prev];
+      const removed = next.splice(index, 1)[0];
+      if (!removed.isUploaded && removed.preview.startsWith("blob:"))
+        URL.revokeObjectURL(removed.preview);
+      if (removed.isCover) {
+        const fi = next.findIndex((f) => f.fileType === "image");
+        if (fi !== -1) {
+          next[fi].isCover = true;
+          toast.info("New cover auto-selected");
         }
       }
-
-      return newFiles;
+      return next;
     });
-
     toast.success("File removed");
   }, []);
 
-  // Set cover image
   const setCoverImage = useCallback(
     (index: number) => {
-      const file = files[index];
-
-      if (file.fileType !== "image") {
-        toast.error("Only images can be set as cover");
+      if (files[index].fileType !== "image") {
+        toast.error("Only images can be the cover");
         return;
       }
+
+      const isAlreadyCover = files[index].isCover;
 
       setFiles((prev) =>
         prev.map((f, i) => ({
           ...f,
-          isCover: i === index && f.fileType === "image",
+          isCover: isAlreadyCover
+            ? false
+            : i === index && f.fileType === "image",
         })),
       );
 
-      toast.success("Cover image set");
+      toast.success(isAlreadyCover ? "Cover removed" : "Cover image set");
     },
     [files],
   );
 
-  // Update file description
   const updateFileDescription = useCallback(
     (index: number, description: string) => {
       setFiles((prev) => {
-        const newFiles = [...prev];
-        newFiles[index].description = description;
-        return newFiles;
+        const n = [...prev];
+        n[index].description = description;
+        return n;
       });
     },
     [],
   );
 
-  // Toggle tag selection
   const toggleTag = useCallback((tag: string) => {
     setFormData((prev) => {
-      const isSelected = prev.tags.some(
+      const exists = prev.tags.some(
         (t) => t.toLowerCase() === tag.toLowerCase(),
       );
       return {
         ...prev,
-        tags: isSelected
+        tags: exists
           ? prev.tags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
           : [...prev.tags, tag],
       };
     });
   }, []);
 
-  // Upload files to S3 in parallel
+  /* ── upload ── */
   const uploadFiles = useCallback(async (): Promise<boolean> => {
-    const filesToUpload = files.filter((f) => !f.isUploaded);
-    if (filesToUpload.length === 0) return true;
-
+    const pending = files.filter((f) => !f.isUploaded);
+    if (!pending.length) return true;
     setIsUploading(true);
-
     try {
-      const uploadPromises = filesToUpload.map(async (fileData) => {
-        try {
-          // Get presigned URL
-
-          const result = await generatePresignedUrlAction({
-            fileName: fileData.file!.name,
-            fileType: fileData.file!.type,
+      const results = await Promise.allSettled(
+        pending.map(async (fd) => {
+          const r = await generatePresignedUrlAction({
+            fileName: fd.file!.name,
+            fileType: fd.file!.type,
           });
-
-          if (!result.success || !result.data) {
-            throw new Error(result.message || "Failed to get upload URL");
-          }
-
-          const presignedData = result.data;
-
-          // Upload file to S3
+          if (!r.success || !r.data)
+            throw new Error(r.message || "No upload URL");
+          const { uploadUrl, key, fileUrl } = r.data;
           await new Promise<void>((resolve, reject) => {
             const xhr = new XMLHttpRequest();
-            xhr.open("PUT", presignedData.uploadUrl, true);
-            xhr.setRequestHeader("Content-Type", fileData.file!.type);
-
+            xhr.open("PUT", uploadUrl, true);
+            xhr.setRequestHeader("Content-Type", fd.file!.type);
             xhr.upload.onprogress = (e) => {
-              if (e.lengthComputable) {
-                const progress = Math.round((e.loaded / e.total) * 100);
+              if (e.lengthComputable)
                 setFiles((prev) =>
                   prev.map((f) =>
-                    f.id === fileData.id
-                      ? { ...f, uploadProgress: progress }
+                    f.id === fd.id
+                      ? {
+                          ...f,
+                          uploadProgress: Math.round(
+                            (e.loaded / e.total) * 100,
+                          ),
+                        }
                       : f,
                   ),
                 );
-              }
             };
-
             xhr.onload = () => {
               if (xhr.status === 200) {
                 setFiles((prev) =>
                   prev.map((f) =>
-                    f.id === fileData.id
+                    f.id === fd.id
                       ? {
                           ...f,
                           isUploaded: true,
-                          s3Key: presignedData.key,
-                          s3Url: presignedData.fileUrl,
+                          s3Key: key,
+                          s3Url: fileUrl,
                           uploadProgress: 100,
                         }
                       : f,
                   ),
                 );
                 resolve();
-              } else {
-                reject(new Error("Upload failed"));
-              }
+              } else reject(new Error("Upload failed"));
             };
-
             xhr.onerror = () => reject(new Error("Upload failed"));
-            xhr.send(fileData.file!);
+            xhr.send(fd.file!);
           });
-
-          return { success: true, fileName: fileData.file!.name };
-        } catch (error) {
-          console.error(`Upload failed for ${fileData.file?.name}:`, error);
-          return {
-            success: false,
-            fileName: fileData.file?.name,
-            error: error instanceof Error ? error.message : "Upload failed",
-          };
-        }
-      });
-
-      const results = await Promise.allSettled(uploadPromises);
-
-      // Check for failures
+          return { success: true };
+        }),
+      );
       const failures = results.filter(
         (r) =>
           r.status === "rejected" ||
           (r.status === "fulfilled" && !r.value.success),
       );
-
-      if (failures.length > 0) {
-        failures.forEach((failure) => {
-          if (failure.status === "rejected") {
-            toast.error("File upload failed");
-          } else if (failure.value) {
-            toast.error(`Failed to upload ${failure.value.fileName}`);
-          }
-        });
+      if (failures.length) {
+        toast.error(`${failures.length} file(s) failed to upload`);
         return false;
       }
-
       return true;
-    } catch (error) {
-      console.error("Upload process error:", error);
-      toast.error("Upload process failed");
+    } catch {
+      toast.error("Upload failed");
       return false;
     } finally {
       setIsUploading(false);
     }
   }, [files]);
 
-  // Handle form submission
+  /* ── submit ── */
   const handleSubmit = useCallback(
-    async (isDraft: boolean = false) => {
-      // Validation
+    async (isDraft = false) => {
       if (!formData.title.trim()) {
         toast.error("Please enter a title");
         return;
       }
-
       if (!formData.category) {
         toast.error("Please select a category");
         return;
       }
-
-      if (formData.tags.length === 0) {
+      if (!formData.tags.length) {
         toast.error("Please add at least one tag");
         return;
       }
 
-      // Check for unuploaded files
-      const unuploadedFiles = files.filter((f) => !f.isUploaded);
-      if (unuploadedFiles.length > 0) {
-        const shouldUpload = window.confirm(
-          `${unuploadedFiles.length} files are not uploaded. Upload them now?`,
-        );
-        if (shouldUpload) {
-          const uploadSuccess = await uploadFiles();
-          if (!uploadSuccess) {
-            toast.error("Some files failed to upload");
-            return;
-          }
-        } else {
+      const pending = files.filter((f) => !f.isUploaded);
+      if (pending.length) {
+        if (
+          !window.confirm(
+            `${pending.length} file(s) not yet uploaded. Upload now?`,
+          )
+        )
+          return;
+        if (!(await uploadFiles())) {
+          toast.error("Some uploads failed");
           return;
         }
       }
 
-      // Ensure at least one image is cover if we have images
-      const hasImages = files.length > 0;
-      const hasCover = files.some((f) => f.isCover);
-
-      if (hasImages && !hasCover) {
-        const firstImageIndex = files.findIndex((f) => f.fileType === "image");
-        if (firstImageIndex !== -1) {
-          setFiles((prev) =>
-            prev.map((f, i) => ({
-              ...f,
-              isCover: i === firstImageIndex,
-            })),
-          );
-          toast.info("Auto-set first image as cover");
-        }
+      /* ensure cover */
+      const imgs = files.filter((f) => f.fileType === "image");
+      if (imgs.length && !files.some((f) => f.isCover)) {
+        const fi = files.findIndex((f) => f.fileType === "image");
+        setFiles((prev) => prev.map((f, i) => ({ ...f, isCover: i === fi })));
+        toast.info("Auto-set first image as cover");
       }
 
       setIsSubmitting(true);
-
       try {
-        // Prepare images payload
-        const images = files.map((file) => ({
-          // url: file.s3Url || file.preview,
-          url: file.isUploaded ? file.s3Url || file.preview : file.preview,
-          description: file.description,
-          isCover: file.isCover,
-          existingImageId: file.existingImageId,
-        }));
-
-        // Prepare payload
-        const payload = {
+        const result = await updatePost({
           id: postId,
           ...formData,
           visibility: isDraft ? "PRIVATE" : selectedVisibility,
           isDraft,
-          images,
-        };
-
-        const result = await updatePost(payload);
-
+          images: files.map((f) => ({
+            url: f.isUploaded ? f.s3Url || f.preview : f.preview,
+            description: f.description,
+            isCover: f.isCover,
+            existingImageId: f.existingImageId,
+          })),
+        });
         if (result.success) {
+          setIsSubmitting(false);
+          setIsRedirecting(true);
           toast.success(isDraft ? "Draft saved!" : "Post published!");
-
-          // Clear object URLs to prevent memory leaks
-          files.forEach((file) => {
-            if (file.preview.startsWith("blob:")) {
-              URL.revokeObjectURL(file.preview);
-            }
+          files.forEach((f) => {
+            if (f.preview.startsWith("blob:")) URL.revokeObjectURL(f.preview);
           });
-
-          setTimeout(() => {
-            router.push(`/my-posts/${postId}`);
-          }, 1000);
+          setTimeout(() => router.push(`/posts/${postId}`), 200);
         } else {
-          toast.error(result.message || "Failed to save changes");
+          setIsSubmitting(false);
+          setIsRedirecting(false);
+          toast.error(result.message || "Failed to save");
         }
-      } catch (error: any) {
-        console.error("Update failed:", error);
-        toast.error(error.message || "Failed to save changes");
+      } catch (e: any) {
+        toast.error(e.message || "Failed to save");
       } finally {
         setIsSubmitting(false);
+        setIsRedirecting(false);
       }
     },
     [formData, files, postId, selectedVisibility, uploadFiles, router],
   );
 
-  // Handle delete post
-  const handleDeletePost = useCallback(async () => {
+  /* ── delete ── */
+  const handleDelete = useCallback(async () => {
     setIsDeleting(true);
     try {
       const result = await deletePost(postId);
       if (result.success) {
-        toast.success("Post deleted successfully");
+        toast.success("Post deleted");
         router.push("/dashboard/my-posts");
       } else {
-        toast.error(result.message || "Failed to delete post");
+        toast.error(result.message || "Failed to delete");
       }
-    } catch (error) {
-      console.error("Delete error:", error);
-      toast.error("Failed to delete post");
+    } catch {
+      toast.error("Failed to delete");
     } finally {
       setIsDeleting(false);
       setIsDeleteModalOpen(false);
     }
   }, [postId, router]);
 
-  // Category options
-  const categoryOptions = useMemo<CategoryOption[]>(() => {
-    return Object.values(Category).map((cat) => ({
-      value: cat,
-      label: cat.replace(/([A-Z])/g, " $1").trim(),
-    }));
-  }, []);
-
-  // Visibility options
-  const visibilityOptions = useMemo<VisibilityOption[]>(
-    () => [
-      {
-        value: "PRIVATE",
-        label: "Private",
-        icon: Lock,
-        desc: "Only you can see",
-      },
-      {
-        value: "FOLLOWERS",
-        label: "Followers",
-        icon: Users,
-        desc: "Visible to followers",
-      },
-      {
-        value: "PUBLIC",
-        label: "Public",
-        icon: Globe,
-        desc: "Everyone can see",
-      },
-    ],
-    [],
-  );
-
-  // Visibility options
-  const stats = useMemo(
-    () => ({
-      totalFiles: files.length,
-      uploadedFiles: files.filter((f) => f.isUploaded).length,
-      images: files.filter((f) => f.fileType === "image").length,
-      videos: files.filter((f) => f.fileType === "video").length,
-      coverSet: files.some((f) => f.isCover),
-    }),
-    [files],
-  );
-  useEffect(() => {
-    return () => {
-      // Revoke all blob URLs when component unmounts
-      files.forEach((file) => {
-        if (file.preview.startsWith("blob:")) {
-          URL.revokeObjectURL(file.preview);
-        }
-      });
-    };
-  }, [files]);
-  // Get cover image for preview
-  const coverFile = files.find((f) => f.isCover);
-  const previewImage = coverFile || files[0];
-
-  if (isLoading) {
+  /* Loading states */
+  if (isLoading)
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 text-[#5865F2] animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading post...</p>
-        </div>
+      <div className="min-h-screen bg-[#F8FAFD] flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-4 border-[#5865F2] border-t-transparent rounded-full"></div>
       </div>
     );
-  }
 
-  if (!post) {
+  if (!post)
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            Post Not Found
-          </h2>
-          <p className="text-gray-600 mb-4">
-            The post you&apos;re trying to edit doesn&apos;t exist.
-          </p>
-          <Button onClick={() => router.push("/my-posts")} variant="primary">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-10 text-center max-w-sm w-full space-y-4">
+          <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+          </div>
+          <div>
+            <h2 className="text-base font-extrabold text-gray-900">
+              Post not found
+            </h2>
+            <p className="text-sm text-gray-400 mt-1">
+              The post you&apos;re looking for doesn&apos;t exist.
+            </p>
+          </div>
+          <Button
+            onClick={() => router.push("/my-posts")}
+            variant="primary"
+            size="sm"
+            className="rounded-xl shadow-sm shadow-indigo-200"
+          >
             Back to My Posts
           </Button>
         </div>
       </div>
     );
-  }
 
+  /* Main render */
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Fixed Header */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <Button
-                onClick={() => router.push("/my-posts")}
-                variant="outline"
-                size="sm"
-                icon={<ArrowLeft className="w-4 h-4" />}
-              >
-                Back
-              </Button>
-              <div className="ml-4">
-                <h1 className="text-lg font-semibold text-gray-900">
-                  Edit Post
-                </h1>
-                <p className="text-xs text-gray-500">
-                  ID: {postId?.slice(0, 8)}...
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <div className="hidden sm:flex items-center space-x-2">
-                <div
-                  className={`px-2 py-1 rounded text-xs font-medium ${
-                    post.isDraft
-                      ? "bg-yellow-100 text-yellow-800"
-                      : "bg-green-100 text-green-800"
-                  }`}
-                >
-                  {post.isDraft ? "Draft" : "Published"}
-                </div>
-                <div className="flex items-center text-xs text-gray-500">
-                  <BookOpen className="w-3 h-3 mr-1" />
-                  {stats.uploadedFiles}/{stats.totalFiles} files
-                </div>
-              </div>
-
-              <Button
-                onClick={() => handleSubmit(false)}
-                variant="primary"
-                size="sm"
-                disabled={isSubmitting}
-                icon={
-                  isSubmitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )
-                }
-              >
-                {isSubmitting ? "Saving..." : "Save"}
-              </Button>
+      {/* Hidden camera inputs */}
+      <input
+        ref={cameraPhotoRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleCameraCapture}
+      />
+      <input
+        ref={cameraVideoRef}
+        type="file"
+        accept="video/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleCameraCapture}
+      />
+      {/* ── Saving overlay */}
+      {(isSubmitting || isRedirecting) && (
+        <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-xl p-8 max-w-xs w-full mx-4 text-center space-y-3">
+            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+            <div>
+              <p className="text-sm font-bold text-gray-900">
+                {isRedirecting ? "Opening post page" : "Saving your changes"}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                {isRedirecting ? "Almost there..." : "Just a moment..."}
+              </p>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Main Form */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Quick Stats Bar */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">
-                    {stats.totalFiles}
-                  </div>
-                  <div className="text-xs text-gray-500">Total Files</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">
-                    {stats.uploadedFiles}
-                  </div>
-                  <div className="text-xs text-gray-500">Uploaded</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {stats.images}
-                  </div>
-                  <div className="text-xs text-gray-500">Images</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {stats.videos}
-                  </div>
-                  <div className="text-xs text-gray-500">Videos</div>
-                </div>
+      {/* ── Main content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-8">
+          <header>
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard")}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors mb-6 group"
+            >
+              <ArrowLeft
+                size={15}
+                className="group-hover:-translate-x-0.5 transition-transform"
+              />
+              Back
+            </button>
+
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+              <div className="space-y-1">
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">
+                  Edit Post
+                </h1>
+                <p className="text-sm text-gray-500">
+                  Make changes to your post and save when you&apos;re done.
+                </p>
               </div>
             </div>
-
-            {/* View Toggle */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex space-x-1">
-                  <Button
-                    onClick={() => setViewMode("details")}
-                    variant={viewMode === "details" ? "primary" : "outline"}
-                    size="sm"
-                    icon={<FileText className="w-4 h-4" />}
-                  >
-                    Details
-                  </Button>
-                  <Button
-                    onClick={() => setViewMode("media")}
-                    variant={viewMode === "media" ? "primary" : "outline"}
-                    size="sm"
-                    icon={<ImageIcon className="w-4 h-4" />}
-                  >
-                    Media ({files.length})
-                  </Button>
+          </header>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left column (2/3) */}
+            <div className="lg:col-span-2 space-y-4">
+              {/* Stats bar */}
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-6 py-4">
+                <div className="grid grid-cols-4 divide-x divide-gray-100">
+                  {[
+                    { v: stats.total, label: "Files", color: "text-gray-900" },
+                    {
+                      v: stats.uploaded,
+                      label: "Uploaded",
+                      color: "text-green-600",
+                    },
+                    {
+                      v: stats.images,
+                      label: "Images",
+                      color: "text-indigo-600",
+                    },
+                    {
+                      v: stats.videos,
+                      label: "Videos",
+                      color: "text-purple-600",
+                    },
+                  ].map(({ v, label, color }) => (
+                    <div
+                      key={label}
+                      className="text-center px-4 first:pl-0 last:pr-0"
+                    >
+                      <p
+                        className={`text-xl font-extrabold tabular-nums ${color}`}
+                      >
+                        {v}
+                      </p>
+                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">
+                        {label}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-
-                {viewMode === "media" && (
-                  <div className="flex space-x-1">
-                    <Button
-                      onClick={() => setFileViewMode("grid")}
-                      variant={fileViewMode === "grid" ? "primary" : "outline"}
-                      size="sm"
-                      icon={<Grid className="w-4 h-4" />}
-                    >
-                      Grid
-                    </Button>
-                    <Button
-                      onClick={() => setFileViewMode("list")}
-                      variant={fileViewMode === "list" ? "primary" : "outline"}
-                      size="sm"
-                      icon={<List className="w-4 h-4" />}
-                    >
-                      List
-                    </Button>
-                  </div>
-                )}
               </div>
-            </div>
 
-            {/* Content Area */}
-            {viewMode === "details" ? (
-              <div className="space-y-6">
-                {/* Title & Description Card */}
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">
-                        Title
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.title}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            title: e.target.value,
-                          }))
-                        }
-                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#5865F2] focus:border-transparent"
-                        placeholder="Enter post title"
-                        disabled={isSubmitting}
-                      />
-                    </div>
+              {/* Tab bar */}
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-1.5 flex gap-1">
+                {(
+                  [
+                    {
+                      key: "details",
+                      label: "Details",
+                      icon: <FileText size={14} />,
+                    },
+                    {
+                      key: "media",
+                      label: `Media (${files.length})`,
+                      icon: <ImageIcon size={14} />,
+                    },
+                  ] as const
+                ).map(({ key, label, icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => setViewMode(key)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all
+                    ${
+                      viewMode === key
+                        ? "bg-primary text-white shadow-sm"
+                        : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                    }`}
+                  >
+                    {icon}
+                    {label}
+                  </button>
+                ))}
+              </div>
 
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">
-                        Description
-                      </label>
-                      <textarea
-                        value={formData.description}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            description: e.target.value,
-                          }))
-                        }
-                        rows={4}
-                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#5865F2] focus:border-transparent resize-none"
-                        placeholder="Describe your post..."
-                        disabled={isSubmitting}
-                      />
-                    </div>
+              {/* Details panel */}
+              {viewMode === "details" && (
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                  {/* progress strip */}
+                  <div className="h-1 bg-gray-100">
+                    <div className="h-full w-full bg-gradient-to-r from-indigo-500 to-indigo-300" />
                   </div>
-                </div>
 
-                {/* Category & Tags Card */}
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Category */}
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">
-                        Category
-                      </label>
-                      <Dropdown
-                        options={categoryOptions}
-                        value={formData.category}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            category: e.target.value as Category,
-                          }))
-                        }
-                        placeholder="Select category"
-                      />
+                  <div className="divide-y divide-gray-100">
+                    {/* Core fields */}
+                    <div className="p-6 sm:p-8 space-y-6">
+                      <Field
+                        label="Title"
+                        counter={`${formData.title.length}/100`}
+                      >
+                        <div className="relative group">
+                          <input
+                            type="text"
+                            value={formData.title}
+                            onChange={(e) =>
+                              setFormData((p) => ({
+                                ...p,
+                                title: e.target.value.slice(0, 100),
+                              }))
+                            }
+                            placeholder="Give your post a title…"
+                            disabled={isSubmitting}
+                            className={inputClass()}
+                          />
+                          {formData.title && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setFormData((p) => ({ ...p, title: "" }))
+                              }
+                              className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-gray-300 hover:text-gray-500 opacity-0 group-focus-within:opacity-100 transition-all"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </Field>
+
+                      <Field
+                        label="Description"
+                        counter={`${formData.description.length}/500`}
+                      >
+                        <textarea
+                          value={formData.description}
+                          onChange={(e) =>
+                            setFormData((p) => ({
+                              ...p,
+                              description: e.target.value.slice(0, 500),
+                            }))
+                          }
+                          rows={4}
+                          placeholder="Describe your post — context, notes, key details…"
+                          disabled={isSubmitting}
+                          className={`${inputClass()} resize-none`}
+                        />
+                      </Field>
+
+                      <Field label="Category">
+                        <div className="relative">
+                          <select
+                            value={formData.category}
+                            onChange={(e) =>
+                              setFormData((p) => ({
+                                ...p,
+                                category: e.target.value as Category,
+                              }))
+                            }
+                            disabled={isSubmitting}
+                            className={`${inputClass()} appearance-none pr-10 cursor-pointer`}
+                          >
+                            <option value="">Select a category</option>
+                            {Object.values(Category).map((cat) => (
+                              <option key={cat} value={cat}>
+                                {cat}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown
+                            size={15}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                          />
+                        </div>
+                      </Field>
                     </div>
 
                     {/* Tags */}
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">
-                        Selected Tags
-                      </label>
-                      <div className="flex flex-wrap gap-2 mb-4 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                        {formData.tags.length > 0 ? (
-                          formData.tags.map((tag) => (
+                    <div className="p-6 sm:p-8 space-y-4 bg-gray-50/50">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Tag size={14} className="text-gray-400" />
+                          <span className="text-sm font-semibold text-gray-900">
+                            Tags
+                          </span>
+                          {formData.tags.length > 0 && (
+                            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                              {formData.tags.length} selected
+                            </span>
+                          )}
+                        </div>
+                        {formData.tags.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData((p) => ({ ...p, tags: [] }))
+                            }
+                            className="text-xs font-medium text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            Clear all
+                          </button>
+                        )}
+                      </div>
+
+                      {/* selected pills */}
+                      {formData.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 p-3 bg-white rounded-xl border border-gray-100">
+                          {formData.tags.map((tag) => (
                             <span
                               key={tag}
-                              className="flex items-center gap-1 px-3 py-1 bg-[#5865F2] text-white rounded-full text-xs"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-xs font-medium"
                             >
+                              <Hash size={10} />
                               {tag}
                               <button
                                 type="button"
                                 onClick={() => toggleTag(tag)}
+                                className="ml-0.5 text-indigo-400 hover:text-indigo-700 transition-colors"
                               >
-                                <X className="w-3 h-3 hover:text-red-200" />
+                                <X size={11} />
                               </button>
                             </span>
-                          ))
-                        ) : (
-                          <span className="text-xs text-gray-400">
-                            No tags selected
-                          </span>
-                        )}
-                      </div>
+                          ))}
+                        </div>
+                      )}
 
-                      <label className="block text-sm font-semibold text-gray-900 mb-2 text-xs uppercase text-gray-500">
-                        Add Tags
-                      </label>
-                      <div className="space-y-4">
+                      {/* Tag picker panel */}
+                      <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-4">
+                        {/* Search */}
                         <div className="relative">
-                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <Search
+                            size={14}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                          />
                           <input
                             type="text"
                             value={tagSearch}
@@ -922,35 +1016,51 @@ const EditPostForm = () => {
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && tagSearch.trim()) {
                                 e.preventDefault();
-                                if (
-                                  !formData.tags.some(
-                                    (t) =>
-                                      t.toLowerCase() ===
-                                      tagSearch.trim().toLowerCase(),
-                                  )
-                                ) {
-                                  toggleTag(tagSearch.trim());
-                                }
+                                toggleTag(tagSearch.trim());
                                 setTagSearch("");
                               }
                             }}
-                            placeholder="Search or create tags (Press Enter)..."
-                            className="w-full pl-10 pr-4 py-2 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#5865F2] focus:border-transparent text-sm"
+                            placeholder="Search or create a tag (Enter to add)…"
+                            className="w-full pl-9 pr-9 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 focus:bg-white transition-all"
                           />
                           {tagSearch && (
                             <button
                               type="button"
                               onClick={() => setTagSearch("")}
-                              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                             >
-                              <X className="w-4 h-4" />
+                              <X size={14} />
                             </button>
+                          )}
+                          {isCheckingTag && (
+                            <Loader2
+                              size={13}
+                              className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 animate-spin"
+                            />
                           )}
                         </div>
 
-                        <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-2">
-                          {tagSearch.trim() &&
-                            !filteredTags.some(
+                        {/* Tag chips */}
+                        <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
+                          {/* Create new */}
+                          {canCreateTag && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                toggleTag(tagSearch.trim());
+                                setTagSearch("");
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50 text-xs font-medium transition-all"
+                            >
+                              <Sparkles size={11} />
+                              Create &quot;{tagSearch.trim()}&quot;
+                            </button>
+                          )}
+
+                          {/* DB match — exists in DB but not in visible list */}
+                          {isTagInDb &&
+                            !isCheckingTag &&
+                            !tagOptions.some(
                               (t) =>
                                 t.toLowerCase() ===
                                 tagSearch.trim().toLowerCase(),
@@ -966,357 +1076,441 @@ const EditPostForm = () => {
                                   toggleTag(tagSearch.trim());
                                   setTagSearch("");
                                 }}
-                                className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-[#5865F2] text-[#5865F2] hover:bg-[#5865F2]/5 transition-all duration-200"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white text-gray-600 border border-gray-200 hover:border-indigo-200 hover:text-indigo-600 hover:bg-indigo-50 text-xs font-medium transition-all"
                               >
-                                <Sparkles className="w-3 h-3 mr-1.5" />
-                                <span className="text-sm font-medium">
-                                  Create &quot;{tagSearch.trim()}&quot;
-                                </span>
+                                <Hash size={10} className="opacity-60" />
+                                {tagSearch.trim().charAt(0).toUpperCase() +
+                                  tagSearch.trim().slice(1)}
                               </button>
                             )}
+
                           {displayedTags.map((tag) => {
                             const isSelected = formData.tags.some(
                               (t) => t.toLowerCase() === tag.toLowerCase(),
                             );
-                            if (isSelected) return null; // Don't show in suggestions if already selected
                             return (
                               <button
                                 key={tag}
                                 type="button"
                                 onClick={() => toggleTag(tag)}
-                                className="inline-flex items-center px-3 py-1.5 rounded-lg border bg-white text-gray-700 border-gray-300 hover:border-[#94BBFF] hover:text-[#5865F2] transition-colors text-sm font-medium"
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all
+                                ${
+                                  isSelected
+                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                    : "bg-white text-gray-600 border-gray-200 hover:border-indigo-200 hover:text-indigo-600 hover:bg-indigo-50"
+                                }`}
                               >
-                                + {tag}
+                                <Hash
+                                  size={10}
+                                  className={
+                                    isSelected ? "opacity-80" : "opacity-40"
+                                  }
+                                />
+                                {tag}
                               </button>
                             );
                           })}
                         </div>
+                      </div>
+                    </div>
 
-                        {filteredTags.length > 12 && (
-                          <div className="text-center pt-2">
-                            <button
-                              type="button"
-                              onClick={() => setShowAllTags(!showAllTags)}
-                              className="inline-flex items-center text-xs font-medium text-[#5865F2] hover:text-[#4854e0]"
-                            >
-                              {showAllTags
-                                ? "Show Less"
-                                : `Show All ${filteredTags.length} Tags`}
-                            </button>
-                          </div>
+                    {/* Visibility */}
+                    <div className="p-6 sm:p-8 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <EyeIcon size={14} className="text-gray-400" />
+                        <span className="text-sm font-semibold text-gray-900">
+                          Visibility
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        {VISIBILITY_OPTIONS.map(
+                          ({ value, label, icon: Icon, desc }) => {
+                            const active = selectedVisibility === value;
+                            return (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setSelectedVisibility(value)}
+                                disabled={isSubmitting}
+                                className={`p-4 rounded-xl border-2 text-left transition-all group
+                              ${
+                                active
+                                  ? "border-indigo-500 bg-indigo-50"
+                                  : "border-gray-200 hover:border-indigo-200 hover:bg-gray-50"
+                              }`}
+                              >
+                                <Icon
+                                  size={15}
+                                  className={`mb-2 transition-colors ${active ? "text-indigo-600" : "text-gray-400 group-hover:text-indigo-400"}`}
+                                />
+                                <p
+                                  className={`text-sm font-bold ${active ? "text-indigo-700" : "text-gray-700"}`}
+                                >
+                                  {label}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {desc}
+                                </p>
+                              </button>
+                            );
+                          },
                         )}
                       </div>
                     </div>
                   </div>
                 </div>
+              )}
 
-                {/* Visibility Card */}
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <label className="block text-sm font-semibold text-gray-900 mb-4">
-                    Visibility
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {visibilityOptions.map((option) => {
-                      // Casting to any tells TS to allow the className prop
-                      const Icon = option.icon as any;
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setSelectedVisibility(option.value)}
-                          disabled={isSubmitting}
-                          className={`p-4 rounded-lg border-2 text-left transition-all ${
-                            selectedVisibility === option.value
-                              ? "border-[#5865F2] bg-[#5865F2]/5"
-                              : "border-gray-200 hover:border-gray-300"
-                          }`}
-                        >
-                          <div className="flex items-center">
-                            <Icon
-                              className={`w-5 h-5 ${
-                                selectedVisibility === option.value
-                                  ? "text-[#5865F2]"
-                                  : "text-gray-400"
-                              }`}
-                            />
-                            <span className="ml-2 font-medium">
-                              {option.label}
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {option.desc}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* Media Management */
-              <div className="space-y-6">
-                {/* Upload Info */}
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-gray-900">
-                        Media Files
-                      </h3>
-                      <p className="text-sm text-gray-500">
-                        Drag & drop files or click to browse. Maximum{" "}
-                        {MAX_FILES} files.
-                      </p>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-500">
-                      <span className="px-2 py-1 bg-gray-100 rounded">
-                        {stats.images} images
-                      </span>
-                      <span className="mx-2">•</span>
-                      <span className="px-2 py-1 bg-gray-100 rounded">
-                        {stats.videos} videos
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Upload Zone */}
-                <div
-                  {...getRootProps()}
-                  className={`bg-white rounded-xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${
-                    isDragActive
-                      ? "border-[#5865F2] bg-[#5865F2]/5"
-                      : "border-gray-300 hover:border-[#5865F2] hover:bg-gray-50"
-                  } ${
-                    isSubmitting || isUploading
-                      ? "opacity-50 cursor-not-allowed"
-                      : ""
-                  }`}
-                >
-                  <input
-                    {...getInputProps()}
-                    disabled={isSubmitting || isUploading}
-                  />
-                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="font-medium text-gray-900 mb-2">
-                    {isDragActive ? "Drop files here" : "Drag & drop files"}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    or{" "}
-                    <span className="text-[#5865F2] font-medium">browse</span>{" "}
-                    from your computer
-                  </p>
-                  <p className="text-xs text-gray-400 mt-3">
-                    Supports images & videos • Max {MAX_SIZE_MB}MB each • Max{" "}
-                    {MAX_FILES} files
-                  </p>
-                </div>
-
-                {/* Files Display */}
-                {files.length > 0 ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-gray-900">
-                        Files ({files.length})
-                      </h3>
-                      {files.some((f) => !f.isUploaded) && (
-                        <Button
-                          onClick={uploadFiles}
-                          variant="primary"
-                          size="sm"
-                          disabled={isUploading || isSubmitting}
-                          icon={
-                            isUploading ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Zap className="w-4 h-4" />
-                            )
+              {/* Media panel */}
+              {viewMode === "media" && (
+                <div className="space-y-4">
+                  {/* Dropzone */}
+                  {files.length > 0 ? (
+                    <div
+                      className={`bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all divide-y divide-gray-100
+    ${isSubmitting || isUploading ? "opacity-50 pointer-events-none" : ""}
+    ${files.length >= MAX_FILES ? "opacity-40 pointer-events-none" : ""}`}
+                    >
+                      {/* Browse row */}
+                      <div
+                        {...getRootProps()}
+                        className={`flex items-center gap-3 px-5 py-3.5 cursor-pointer transition-all
+        ${isDragActive ? "bg-indigo-50" : "hover:bg-gray-50"}`}
+                      >
+                        <input
+                          {...getInputProps()}
+                          disabled={
+                            isSubmitting ||
+                            isUploading ||
+                            files.length >= MAX_FILES
                           }
+                        />
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors
+        ${isDragActive ? "bg-indigo-100" : "bg-gray-100"}`}
                         >
-                          {isUploading ? "Uploading..." : "Upload All"}
-                        </Button>
+                          <Upload
+                            size={15}
+                            className={
+                              isDragActive ? "text-indigo-600" : "text-gray-400"
+                            }
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-700">
+                            {isDragActive ? "Drop to add" : "Browse files"}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {files.length}/{MAX_FILES} used · {MAX_SIZE_MB} MB
+                            max
+                          </p>
+                        </div>
+                        {files.length >= MAX_FILES ? (
+                          <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-3 py-1 rounded-lg flex-shrink-0">
+                            Limit reached
+                          </span>
+                        ) : (
+                          <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg flex-shrink-0">
+                            Browse
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Camera rows — mobile only */}
+                      {isMobile && files.length < MAX_FILES && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => cameraPhotoRef.current?.click()}
+                            disabled={isSubmitting || isUploading}
+                            className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-all disabled:opacity-40"
+                          >
+                            <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                              <Camera size={15} className="text-gray-400" />
+                            </div>
+                            <div className="flex-1 min-w-0 text-left">
+                              <p className="text-sm font-semibold text-gray-700">
+                                Take a photo
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                Opens rear camera
+                              </p>
+                            </div>
+                            <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-3 py-1 rounded-lg flex-shrink-0">
+                              Photo
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => cameraVideoRef.current?.click()}
+                            disabled={isSubmitting || isUploading}
+                            className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-all disabled:opacity-40"
+                          >
+                            <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                              <Video size={15} className="text-gray-400" />
+                            </div>
+                            <div className="flex-1 min-w-0 text-left">
+                              <p className="text-sm font-semibold text-gray-700">
+                                Record a video
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                Opens rear camera
+                              </p>
+                            </div>
+                            <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-3 py-1 rounded-lg flex-shrink-0">
+                              Video
+                            </span>
+                          </button>
+                        </>
                       )}
                     </div>
-
-                    {/* Grid/List View */}
-                    {fileViewMode === "grid" ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {files.map((file, index) => (
-                          <div
-                            key={file.id}
-                            className={`bg-white rounded-lg border overflow-hidden group ${
-                              file.isCover
-                                ? "border-[#5865F2] ring-1 ring-[#5865F2]"
-                                : "border-gray-200"
-                            }`}
-                          >
-                            {/* Thumbnail */}
-                            <div className="relative aspect-square bg-gray-100">
-                              {file.fileType === "image" ? (
-                                <Image
-                                  src={file.preview}
-                                  alt={file.file?.name || "Image"}
-                                  fill
-                                  className="object-cover"
-                                  unoptimized
-                                  sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                                />
-                              ) : (
-                                <div className="flex items-center justify-center h-full">
-                                  <Video className="w-8 h-8 text-gray-400" />
-                                </div>
-                              )}
-
-                              {/* Cover Badge */}
-                              {file.isCover && (
-                                <div className="absolute top-2 left-2 bg-[#5865F2] text-white text-xs font-medium px-2 py-1 rounded-full">
-                                  <Star className="w-3 h-3 inline mr-1" />
-                                  Cover
-                                </div>
-                              )}
-
-                              {/* Upload Status */}
-                              {!file.isUploaded && (
-                                <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white p-2">
-                                  <div className="text-xs text-center">
-                                    Needs upload
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Actions Overlay */}
-                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <div className="flex space-x-2">
-                                  {file.fileType === "image" && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setCoverImage(index);
-                                      }}
-                                      className="p-2 bg-white rounded-lg hover:bg-gray-100"
-                                      title="Set as cover"
-                                      disabled={isSubmitting}
-                                    >
-                                      <Camera className="w-4 h-4" />
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      removeFile(index);
-                                    }}
-                                    className="p-2 bg-white rounded-lg hover:bg-red-50 text-red-500"
-                                    title="Remove"
-                                    disabled={isSubmitting}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* File Info */}
-                            <div className="p-3">
-                              <p className="text-sm font-medium text-gray-900 truncate mb-1">
-                                {file.file?.name || "Uploaded file"}
-                              </p>
-                              <textarea
-                                value={file.description}
-                                onChange={(e) =>
-                                  updateFileDescription(index, e.target.value)
-                                }
-                                placeholder="Add description..."
-                                className="w-full text-xs p-1.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#5865F2] resize-none"
-                                rows={2}
-                                disabled={isSubmitting}
-                              />
-                            </div>
-                          </div>
-                        ))}
+                  ) : (
+                    /* Empty state — full dropzone + camera buttons below */
+                    <div className="space-y-2">
+                      <div
+                        {...getRootProps()}
+                        className={`bg-white rounded-2xl border-2 border-dashed p-10 text-center cursor-pointer transition-all
+        ${isDragActive ? "border-indigo-400 bg-indigo-50" : "border-gray-200 hover:border-indigo-300 hover:bg-gray-50"}
+        ${isSubmitting || isUploading ? "opacity-50 pointer-events-none" : ""}`}
+                      >
+                        <input
+                          {...getInputProps()}
+                          disabled={isSubmitting || isUploading}
+                        />
+                        <div
+                          className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 transition-colors
+        ${isDragActive ? "bg-indigo-100" : "bg-gray-100"}`}
+                        >
+                          <Upload
+                            size={22}
+                            className={
+                              isDragActive ? "text-indigo-600" : "text-gray-400"
+                            }
+                          />
+                        </div>
+                        <p className="text-sm font-semibold text-gray-700 mb-1">
+                          {isDragActive
+                            ? "Drop files here"
+                            : "Drag & drop files"}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          or{" "}
+                          <span className="text-indigo-600 font-medium">
+                            browse
+                          </span>{" "}
+                          from your computer
+                        </p>
+                        <p className="text-[11px] text-gray-300 mt-3 uppercase tracking-wider font-bold">
+                          Images & videos · up to {MAX_FILES} files ·{" "}
+                          {MAX_SIZE_MB} MB max
+                        </p>
                       </div>
-                    ) : (
-                      /* List View */
+
+                      {/* Camera options — mobile only, empty state */}
+                      {isMobile && (
+                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden divide-y divide-gray-100">
+                          <button
+                            type="button"
+                            onClick={() => cameraPhotoRef.current?.click()}
+                            disabled={isSubmitting || isUploading}
+                            className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-all disabled:opacity-50"
+                          >
+                            <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                              <Camera size={15} className="text-gray-400" />
+                            </div>
+                            <div className="text-left">
+                              <p className="text-sm font-semibold text-gray-700">
+                                Take a photo
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                Capture directly with your camera
+                              </p>
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => cameraVideoRef.current?.click()}
+                            disabled={isSubmitting || isUploading}
+                            className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-all disabled:opacity-50"
+                          >
+                            <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                              <Video size={15} className="text-gray-400" />
+                            </div>
+                            <div className="text-left">
+                              <p className="text-sm font-semibold text-gray-700">
+                                Record a video
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                Record directly with your camera
+                              </p>
+                            </div>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Files */}
+                  {files.length > 0 ? (
+                    <div className="space-y-3">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-gray-700">
+                            {files.length} file{files.length !== 1 ? "s" : ""}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {files.filter((f) => f.isUploaded).length} uploaded
+                          </span>
+                        </div>
+                        {files.some((f) => !f.isUploaded) && (
+                          <Button
+                            onClick={uploadFiles}
+                            variant="primary"
+                            size="sm"
+                            disabled={isUploading || isSubmitting}
+                            className="rounded-xl shadow-sm shadow-indigo-200"
+                            icon={
+                              isUploading ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <Zap size={13} />
+                              )
+                            }
+                          >
+                            {isUploading ? "Uploading…" : "Upload All"}
+                          </Button>
+                        )}
+                      </div>
+
                       <div className="space-y-2">
                         {files.map((file, index) => (
                           <div
                             key={file.id}
-                            className={`bg-white rounded-lg border p-3 ${
-                              file.isCover
-                                ? "border-[#5865F2] bg-[#5865F2]/5"
-                                : "border-gray-200"
-                            }`}
+                            className={`rounded-2xl border transition-all duration-200
+          ${
+            file.isCover
+              ? "border-indigo-200 bg-gradient-to-br from-indigo-50/60 to-white shadow-sm shadow-indigo-100"
+              : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
+          }`}
                           >
-                            <div className="flex items-start gap-3">
+                            {/* Cover badge strip */}
+                            {file.isCover && (
+                              <div className="flex items-center gap-1.5 px-4 pt-3 pb-0">
+                                <Star
+                                  size={11}
+                                  className="text-indigo-500 fill-indigo-500"
+                                />
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">
+                                  Cover Image
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="flex flex-col sm:flex-row items-start gap-3 p-4">
                               {/* Thumbnail */}
-                              <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                              <div
+                                onClick={() =>
+                                  setPreviewFile({
+                                    src: file.preview,
+                                    type: file.fileType as "image" | "video",
+                                    name: file.file?.name || "Uploaded file",
+                                  })
+                                }
+                                className="relative w-full sm:w-[72px] h-48 sm:h-[72px] rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 shadow-sm cursor-zoom-in group"
+                              >
                                 {file.fileType === "image" ? (
                                   <Image
                                     src={file.preview}
                                     alt={file.file?.name || "Image"}
                                     fill
-                                    className="object-cover"
+                                    className="object-cover transition-transform duration-200 group-hover:scale-105"
                                     unoptimized
-                                    sizes="64px"
+                                    sizes="(max-width: 640px) 100vw, 72px"
                                   />
                                 ) : (
-                                  <div className="flex items-center justify-center h-full">
-                                    <Video className="w-6 h-6 text-gray-400" />
-                                  </div>
+                                  <video
+                                    src={file.preview}
+                                    className="absolute inset-0 w-full h-full object-cover"
+                                    muted
+                                    preload="metadata"
+                                  />
                                 )}
-                                {file.isCover && (
-                                  <div className="absolute top-1 right-1 bg-[#5865F2] text-white text-[10px] font-medium px-1 py-0.5 rounded">
-                                    Cover
-                                  </div>
-                                )}
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 flex items-center justify-center">
+                                  <Maximize2
+                                    size={14}
+                                    className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                  />
+                                </div>
                               </div>
 
-                              {/* File Info */}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between mb-1">
-                                  <div className="flex items-center">
-                                    <p className="font-medium text-gray-900 truncate text-sm">
+                              {/* Content */}
+                              <div className="flex-1 w-full min-w-0 space-y-2.5">
+                                {/* Top row: name + status + actions */}
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    {file.isUploaded ? (
+                                      <CheckCircle
+                                        size={13}
+                                        className="text-emerald-500 flex-shrink-0"
+                                      />
+                                    ) : (
+                                      <AlertCircle
+                                        size={13}
+                                        className="text-amber-400 flex-shrink-0"
+                                      />
+                                    )}
+                                    <p className="text-sm font-semibold text-gray-900 truncate">
                                       {file.file?.name || "Uploaded file"}
                                     </p>
-                                    {file.isUploaded ? (
-                                      <CheckCircle className="w-4 h-4 text-green-500 ml-2" />
-                                    ) : (
-                                      <AlertCircle className="w-4 h-4 text-yellow-500 ml-2" />
-                                    )}
                                   </div>
-                                  <div className="flex items-center space-x-2">
+
+                                  {/* Actions */}
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
                                     {file.fileType === "image" && (
                                       <button
                                         onClick={() => setCoverImage(index)}
                                         disabled={isSubmitting}
-                                        className={`text-xs px-2 py-1 rounded ${
-                                          file.isCover
-                                            ? "bg-[#5865F2] text-white"
-                                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                        }`}
+                                        className={`text-[11px] px-2.5 py-1 rounded-lg font-semibold transition-all
+                      ${
+                        file.isCover
+                          ? "bg-indigo-600 text-white shadow-sm shadow-indigo-200"
+                          : "bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 border border-transparent"
+                      }`}
                                       >
-                                        {file.isCover ? "Cover" : "Set Cover"}
+                                        {file.isCover ? "✓ Cover" : "Set Cover"}
                                       </button>
                                     )}
                                     <button
                                       onClick={() => removeFile(index)}
                                       disabled={isSubmitting}
-                                      className="p-1 text-gray-400 hover:text-red-500"
+                                      className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                                     >
-                                      <Trash2 className="w-4 h-4" />
+                                      <Trash2 size={18} />
                                     </button>
                                   </div>
                                 </div>
 
-                                {/* Progress */}
-                                {!file.isUploaded && (
-                                  <div className="mb-2">
-                                    <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                                      <span>Uploading...</span>
-                                      <span>{file.uploadProgress}%</span>
+                                {/* Upload progress */}
+                                {!file.isUploaded && isUploading && (
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between text-[10px] font-medium text-gray-400">
+                                      <span className="flex items-center gap-1">
+                                        <Loader2
+                                          size={9}
+                                          className="animate-spin"
+                                        />
+                                        Uploading
+                                      </span>
+                                      <span className="tabular-nums text-indigo-500">
+                                        {file.uploadProgress}%
+                                      </span>
                                     </div>
-                                    <div className="h-1.5 bg-gray-200 rounded-full">
+                                    <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
                                       <div
-                                        className="h-full bg-gradient-to-r from-[#5865F2] to-[#94BBFF] rounded-full"
+                                        className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 rounded-full transition-all duration-300"
                                         style={{
                                           width: `${file.uploadProgress}%`,
                                         }}
@@ -1327,271 +1521,253 @@ const EditPostForm = () => {
 
                                 {/* Description */}
                                 <textarea
+                                  ref={(el) => {
+                                    if (!el) return;
+                                    el.style.height = "auto";
+                                    el.style.height = `${el.scrollHeight}px`;
+                                  }}
                                   value={file.description}
-                                  onChange={(e) =>
-                                    updateFileDescription(index, e.target.value)
-                                  }
-                                  placeholder="Add description..."
-                                  className="w-full text-xs p-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#5865F2] resize-none"
-                                  rows={2}
+                                  onChange={(e) => {
+                                    updateFileDescription(
+                                      index,
+                                      e.target.value,
+                                    );
+                                    e.target.style.height = "auto";
+                                    e.target.style.height = `${e.target.scrollHeight}px`;
+                                  }}
+                                  placeholder="Add a description for this file…"
                                   disabled={isSubmitting}
+                                  rows={2}
+                                  className="w-full text-sm px-3 py-2.5 border border-gray-200 bg-gray-50 focus:bg-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 resize-none transition-all placeholder-gray-300 text-gray-700 overflow-hidden"
                                 />
                               </div>
                             </div>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                    <ImageIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <h3 className="font-semibold text-gray-900 mb-2">
-                      No Media Files
-                    </h3>
-                    <p className="text-gray-500 mb-4">
-                      Add images or videos to your post
-                    </p>
-                    <p className="text-sm text-gray-400">
-                      Maximum {MAX_FILES} files • {MAX_SIZE_MB}MB each
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Right Column - Quick Actions & Preview */}
-          <div className="space-y-6">
-            {/* Quick Actions Card */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
-                <Zap className="w-4 h-4 mr-2" />
-                Quick Actions
-              </h3>
-
-              <div className="space-y-3">
-                <Button
-                  onClick={() => handleSubmit(false)}
-                  variant="primary"
-                  className="w-full"
-                  disabled={isSubmitting}
-                  icon={
-                    isSubmitting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )
-                  }
-                >
-                  {isSubmitting ? "Saving..." : "Save Changes"}
-                </Button>
-
-                <Button
-                  onClick={() => handleSubmit(true)}
-                  variant="outline"
-                  className="w-full"
-                  disabled={isSubmitting}
-                >
-                  Save as Draft
-                </Button>
-
-                <div className="pt-3 border-t border-gray-100">
-                  <p className="text-xs text-gray-500 mb-2">Publish options:</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      onClick={() => {
-                        setSelectedVisibility("PUBLIC");
-                        handleSubmit(false);
-                      }}
-                      variant="primary"
-                      size="sm"
-                      className="w-full"
-                      disabled={isSubmitting}
-                    >
-                      Public
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setSelectedVisibility("FOLLOWERS");
-                        handleSubmit(false);
-                      }}
-                      variant="primary"
-                      size="sm"
-                      className="w-full"
-                      disabled={isSubmitting}
-                    >
-                      Followers
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Preview Card */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
-                <EyeIcon className="w-4 h-4 mr-2" />
-                Preview
-              </h3>
-
-              <div className="space-y-4">
-                {/* Cover Preview */}
-                {previewImage ? (
-                  <div className="relative aspect-video rounded-lg overflow-hidden bg-gray-100">
-                    {previewImage.fileType === "image" ? (
-                      <Image
-                        src={previewImage.preview}
-                        alt="Preview"
-                        fill
-                        className="object-cover"
-                        unoptimized
-                        sizes="(max-width: 768px) 100vw, 33vw"
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center h-full">
-                        <Video className="w-12 h-12 text-gray-400" />
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center space-y-3">
+                      <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto">
+                        <ImageIcon size={22} className="text-gray-300" />
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="aspect-video rounded-lg bg-gray-100 flex items-center justify-center">
-                    <ImageIcon className="w-8 h-8 text-gray-400" />
-                  </div>
-                )}
+                      <div>
+                        <p className="text-sm font-bold text-gray-700">
+                          No media files
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Use the dropzone above to add images or videos
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
-                {/* Post Info */}
-                <div>
-                  <h4 className="font-bold text-gray-900 truncate">
-                    {formData.title || "Untitled Post"}
-                  </h4>
-                  <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                    {formData.description || "No description"}
+            {/* Right column (1/3) */}
+            <div className="space-y-4">
+              {/* Publish actions */}
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Zap size={14} className="text-indigo-500" />
+                  <span className="text-sm font-extrabold text-gray-900 uppercase tracking-wider">
+                    Publish
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <Button
+                    onClick={() => handleSubmit(false)}
+                    variant="primary"
+                    className="w-full rounded-xl shadow-sm shadow-indigo-200"
+                    disabled={isSubmitting}
+                    icon={
+                      isSubmitting ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Save size={14} />
+                      )
+                    }
+                  >
+                    {isSubmitting ? "Saving…" : "Save Changes"}
+                  </Button>
+                </div>
+
+                <div className="pt-3 border-t border-gray-100 space-y-2">
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                    Quick publish
                   </p>
-                </div>
-
-                {/* Quick Stats */}
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-gray-50 rounded-lg p-2">
-                    <div className="font-bold text-gray-900">
-                      {files.length}
-                    </div>
-                    <div className="text-xs text-gray-500">Files</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      {
+                        vis: "PUBLIC" as Visibility,
+                        label: "Public",
+                        icon: <Globe size={12} />,
+                      },
+                      {
+                        vis: "FOLLOWERS" as Visibility,
+                        label: "Followers",
+                        icon: <Users size={12} />,
+                      },
+                    ].map(({ vis, label, icon }) => (
+                      <button
+                        key={vis}
+                        onClick={() => {
+                          setSelectedVisibility(vis);
+                          handleSubmit(false);
+                        }}
+                        disabled={isSubmitting}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 transition-all disabled:opacity-50"
+                      >
+                        {icon}
+                        {label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-2">
-                    <div className="font-bold text-gray-900">
-                      {formData.tags.length}
-                    </div>
-                    <div className="text-xs text-gray-500">Tags</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-2">
-                    <div className="font-bold text-gray-900">
-                      {selectedVisibility === "PRIVATE"
-                        ? "Pvt"
-                        : selectedVisibility === "FOLLOWERS"
-                          ? "Fol"
-                          : "Pub"}
-                    </div>
-                    <div className="text-xs text-gray-500">Visibility</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Tips Card */}
-            <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
-              <div className="flex items-start">
-                <Info className="w-5 h-5 text-blue-500 mt-0.5 mr-2 flex-shrink-0" />
-                <div>
-                  <h4 className="font-medium text-blue-900 mb-1">Quick Tips</h4>
-                  <ul className="text-sm text-blue-800 space-y-1">
-                    <li>• Set a cover image for better preview</li>
-                    <li>• Add descriptions to each media file</li>
-                    <li>• Use relevant tags for discoverability</li>
-                    <li>• Choose appropriate visibility</li>
-                  </ul>
                 </div>
               </div>
-            </div>
 
-            <Button
-              onClick={() => setIsDeleteModalOpen(true)}
-              variant="outline"
-              className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-400"
-              icon={<Trash2 className="w-4 h-4" />}
-            >
-              Delete This Post
-            </Button>
+              {/* Tips */}
+              <div className="bg-indigo-50 rounded-2xl border border-indigo-100 p-4 space-y-2">
+                <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
+                  Tips
+                </p>
+                <ul className="space-y-1.5">
+                  {[
+                    "Add captions to each media file",
+                    "Use relevant tags for discoverability",
+                    "Choose the right visibility before publishing",
+                  ].map((tip) => (
+                    <li
+                      key={tip}
+                      className="flex items-start gap-1.5 text-xs text-indigo-600"
+                    >
+                      <span className="mt-1 w-1 h-1 rounded-full bg-indigo-400 flex-shrink-0" />
+                      {tip}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Delete */}
+              <button
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-red-200 text-red-500 text-sm font-semibold hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all"
+              >
+                <Trash2 size={14} /> Delete This Post
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Delete Modal */}
+      {/* Delete modal  */}
       {isDeleteModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-auto">
-            <div className="p-6">
-              <div className="flex items-center mb-4">
-                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center mr-3">
-                  <AlertCircle className="w-5 h-5 text-red-600" />
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl max-w-sm w-full mx-auto overflow-hidden">
+            <div className="p-6 space-y-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                  <AlertCircle size={18} className="text-red-500" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 text-lg">
+                  <p className="text-base font-extrabold text-gray-900">
                     Delete Post
-                  </h3>
-                  <p className="text-sm text-gray-500">
+                  </p>
+                  <p className="text-xs text-gray-400">
                     This action cannot be undone
                   </p>
                 </div>
               </div>
 
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-red-800 font-medium mb-1">
+              <div className="bg-red-50 border border-red-100 rounded-xl p-4 space-y-2">
+                <p className="text-sm font-semibold text-red-700">
                   Are you sure you want to delete this post?
                 </p>
-                <p className="text-xs text-red-700">
-                  • All associated data will be permanently removed
-                  <br />
-                  • This includes images, comments, and likes
-                  <br />• This action is irreversible
-                </p>
+                <ul className="space-y-1">
+                  {[
+                    "All images, comments, and likes will be removed",
+                    "This is permanent and irreversible",
+                  ].map((item) => (
+                    <li
+                      key={item}
+                      className="flex items-start gap-1.5 text-xs text-red-500"
+                    >
+                      <span className="mt-1 w-1 h-1 rounded-full bg-red-400 flex-shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
               </div>
 
-              <div className="flex space-x-3">
+              <div className="flex gap-3">
                 <Button
                   onClick={() => setIsDeleteModalOpen(false)}
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 rounded-xl"
                 >
                   Cancel
                 </Button>
-                <Button
-                  onClick={handleDeletePost}
-                  variant="primary"
-                  className="flex-1"
-                  icon={<Trash2 className="w-4 h-4" />}
+                <button
+                  onClick={handleDelete}
                   disabled={isDeleting}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60"
                 >
-                  {isDeleting ? "Deleting..." : "Delete Post"}
-                </Button>
+                  {isDeleting ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" /> Deleting…
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={13} /> Delete Post
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Loading Overlay */}
-      {isSubmitting && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 shadow-xl max-w-sm mx-4">
-            <div className="flex flex-col items-center">
-              <Loader2 className="w-8 h-8 text-[#5865F2] animate-spin mb-3" />
-              <h3 className="font-semibold text-gray-900 mb-1">
-                Saving Changes
-              </h3>
-              <p className="text-sm text-gray-600 text-center">
-                Updating your post...
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setPreviewFile(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-1 pb-3">
+              <p className="text-xs font-medium text-white/60 truncate pr-4">
+                {previewFile.name}
               </p>
+              <button
+                onClick={() => setPreviewFile(null)}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all flex-shrink-0"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Media */}
+            <div className="rounded-2xl overflow-hidden bg-black flex items-center justify-center">
+              {previewFile.type === "image" ? (
+                <img
+                  src={previewFile.src}
+                  alt={previewFile.name}
+                  className="max-h-[80vh] w-auto object-contain"
+                />
+              ) : (
+                <video
+                  src={previewFile.src}
+                  controls
+                  autoPlay
+                  className="max-h-[80vh] w-full"
+                />
+              )}
             </div>
           </div>
         </div>

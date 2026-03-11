@@ -1,23 +1,62 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createPost } from "@/actions/posts/createPost";
-import { getTags } from "@/actions/tags";
+import { getTags, checkTagExists } from "@/actions/tags";
 import { Category } from "@/app/generated/prisma/enums";
-import Dropdown from "@/app/components/inputFields/Dropdown";
 import Button from "@/app/components/Button";
 import {
   ArrowLeft,
-  Tag,
-  Hash,
+  ArrowRight,
   Sparkles,
   Search,
   X,
   ChevronDown,
   ChevronUp,
+  Hash,
+  Tag,
+  Loader2,
 } from "lucide-react";
+
+const inputBase =
+  "w-full px-4 py-3 rounded-xl border bg-gray-50 focus:bg-white text-sm text-gray-900 placeholder-gray-400 outline-none transition-all";
+
+const inputClass = (hasError: boolean) =>
+  `${inputBase} focus:ring-2 ${
+    hasError
+      ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+      : "border-gray-200 hover:border-indigo-200 focus:border-indigo-500 focus:ring-indigo-100"
+  }`;
+
+const Field = ({
+  label,
+  counter,
+  error,
+  children,
+}: {
+  label: string;
+  counter?: string;
+  error?: string;
+  children: React.ReactNode;
+}) => (
+  <div className="space-y-2">
+    <div className="flex items-center justify-between px-0.5">
+      <label className="text-sm font-semibold text-gray-900">{label}</label>
+      {counter && (
+        <span className="text-xs text-gray-400 tabular-nums">{counter}</span>
+      )}
+    </div>
+    {children}
+    {error && (
+      <p className="flex items-center gap-1.5 text-xs text-red-600 font-medium">
+        <span className="w-1 h-1 rounded-full bg-red-500 inline-block flex-shrink-0" />
+        {error}
+      </p>
+    )}
+  </div>
+);
 
 const CreatePostForm = () => {
   const router = useRouter();
@@ -30,26 +69,49 @@ const CreatePostForm = () => {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [errors, setErrors] = useState({
     title: "",
     description: "",
     category: "",
   });
-
-  const [showAllTags, setShowAllTags] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
-  const [selectedTagsOpen, setSelectedTagsOpen] = useState(true);
   const [dbTags, setDbTags] = useState<string[]>([]);
+  const [isTagInDb, setIsTagInDb] = useState(false);
+  const [isCheckingTag, setIsCheckingTag] = useState(false);
 
   useEffect(() => {
-    const fetchTags = async () => {
-      const res = await getTags();
-      if (res.success && res.data) {
-        setDbTags(res.data);
-      }
-    };
-    fetchTags();
+    getTags().then((res) => {
+      if (res.success && res.data) setDbTags(res.data);
+    });
   }, []);
+
+  useEffect(() => {
+    if (tagSearch.trim().length < 2) {
+      setIsTagInDb(false);
+      setIsCheckingTag(false);
+      return;
+    }
+
+    // Mark as checking immediately — before the debounce fires
+    setIsCheckingTag(true);
+    setIsTagInDb(false); 
+
+    const delayDebounceFn = setTimeout(async () => {
+      const capturedSearch = tagSearch.trim(); // capture for closure safety
+      const { exists } = await checkTagExists(capturedSearch);
+
+      // Only update if tagSearch hasn't changed since this check started
+      setIsTagInDb(exists);
+      setIsCheckingTag(false);
+    }, 300);
+
+    return () => {
+      clearTimeout(delayDebounceFn);
+      // Don't reset isCheckingTag here — the cleanup fires on every keystroke
+      // and would immediately hide the pending state
+    };
+  }, [tagSearch]);
 
   const tagOptions = useMemo(() => {
     const baseTags = [
@@ -63,56 +125,59 @@ const CreatePostForm = () => {
       "Food",
       "Health",
       "Education",
-      "Science",
-      "Music",
-      "Sports",
-      "Finance",
-      "Marketing",
-      "Writing",
     ];
-    // Combine base tags and DB tags, ensuring uniqueness by lowercasing
-    const allTagsMap = new Map<string, string>();
-
-    // Add base tags first
-    baseTags.forEach((tag) => {
-      allTagsMap.set(tag.toLowerCase(), tag);
+    const map = new Map<string, string>();
+    baseTags.forEach((t) => map.set(t.toLowerCase(), t));
+    dbTags.forEach((t) => {
+      map.set(t.toLowerCase(), t.charAt(0).toUpperCase() + t.slice(1));
     });
-
-    // Add DB tags (can override case of base tags if they match)
-    dbTags.forEach((tag) => {
-      // Capitalize first letter for display if it's purely lowercase, otherwise keep as is
-      const displayTag =
-        tag.charAt(0) === tag.charAt(0).toLowerCase()
-          ? tag.charAt(0).toUpperCase() + tag.slice(1)
-          : tag;
-      allTagsMap.set(tag.toLowerCase(), displayTag);
-    });
-
-    return Array.from(allTagsMap.values());
+    return Array.from(map.values());
   }, [dbTags]);
 
+  const filteredTags = useMemo(() => {
+    if (!tagSearch.trim()) return tagOptions;
+    return tagOptions.filter((t) =>
+      t.toLowerCase().includes(tagSearch.toLowerCase()),
+    );
+  }, [tagOptions, tagSearch]);
+
+  const displayedTags = filteredTags;
+
+  const canCreateTag = useMemo(() => {
+    const searchLower = tagSearch.trim().toLowerCase();
+    if (!searchLower) return false;
+    if (isCheckingTag) return false;
+
+    const inVisibleList = tagOptions.some(
+      (t) => t.toLowerCase() === searchLower,
+    );
+    const isAlreadySelected = formData.tags.some(
+      (t) => t.toLowerCase() === searchLower,
+    );
+
+    return !inVisibleList && !isAlreadySelected && !isTagInDb;
+  }, [tagSearch, tagOptions, formData.tags, isTagInDb, isCheckingTag]);
+
   const validateForm = () => {
-    let valid = true;
     const newErrors = { title: "", description: "", category: "" };
+    let valid = true;
 
     if (!formData.title.trim()) {
       newErrors.title = "Title is required";
       valid = false;
-    } else if (formData.title.length < 3) {
+    } else if (formData.title.trim().length < 3) {
       newErrors.title = "Title must be at least 3 characters";
       valid = false;
     }
-
     if (!formData.description.trim()) {
       newErrors.description = "Description is required";
       valid = false;
-    } else if (formData.description.length < 10) {
+    } else if (formData.description.trim().length < 10) {
       newErrors.description = "Description must be at least 10 characters";
       valid = false;
     }
-
     if (!formData.category) {
-      newErrors.category = "Category is required";
+      newErrors.category = "Please select a category";
       valid = false;
     }
 
@@ -125,461 +190,388 @@ const CreatePostForm = () => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
-
     try {
-      const res = await createPost({
-        title: formData.title,
-        description: formData.description,
-        category: formData.category,
-        tags: formData.tags,
-      });
-
-      if (res.success) {
-        toast.success("🎉 Draft created successfully! Ready for images.");
-
-        if (res.data?.id) {
-          setTimeout(() => {
-            router.push(`/posts/${res.data.id}/edit`);
-          }, 200);
-        }
+      const res = await createPost(formData);
+      if (res.success && res.data?.id) {
+        setIsSubmitting(false);
+        setIsRedirecting(true);
+        toast.success("Draft created as private post!");
+        setTimeout(() => router.push(`/posts/${res.data.id}/edit`), 200);
       } else {
         toast.error(res.message || "Failed to create post");
+        setIsSubmitting(false);
+        setIsRedirecting(false);
       }
-    } catch (error: any) {
-      const errorMessage = error.message || "An unexpected error occurred";
-      toast.error(errorMessage);
-      console.error("Post creation error:", error);
+    } catch {
+      toast.error("An unexpected error occurred");
     } finally {
       setIsSubmitting(false);
+      setIsRedirecting(false);
     }
   };
 
-  const categoryOptions = Object.values(Category).map((opt) => ({
-    value: opt,
-    label: opt,
-  }));
-
-  // Filter tags based on search
-  const filteredTags = useMemo(() => {
-    if (!tagSearch.trim()) return tagOptions;
-    return tagOptions.filter((tag) =>
-      tag.toLowerCase().includes(tagSearch.toLowerCase()),
-    );
-  }, [tagOptions, tagSearch]);
-
-  // Show limited tags when not expanded
-  const displayedTags = showAllTags ? filteredTags : filteredTags.slice(0, 12);
-
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFormData({ ...formData, category: e.target.value as Category });
-    if (errors.category) setErrors({ ...errors, category: "" });
-  };
-
-  const toggleTag = (tag: string) => {
+  const toggleTag = useCallback((tag: string) => {
     setFormData((prev) => {
-      const isSelected = prev.tags.some(
-        (t) => t.toLowerCase() === tag.toLowerCase(),
+      const normalizedTag = tag.trim();
+      const exists = prev.tags.some(
+        (t) => t.toLowerCase() === normalizedTag.toLowerCase(),
       );
-      return {
-        ...prev,
-        tags: isSelected
-          ? prev.tags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
-          : [...prev.tags, tag],
-      };
+
+      if (exists) {
+        return {
+          ...prev,
+          tags: prev.tags.filter(
+            (t) => t.toLowerCase() !== normalizedTag.toLowerCase(),
+          ),
+        };
+      } else {
+        return {
+          ...prev,
+          tags: [...prev.tags, normalizedTag],
+        };
+      }
     });
-  };
-
-  const removeTag = (tag: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      tags: prev.tags.filter((t) => t !== tag),
-    }));
-  };
-
-  const clearAllTags = () => {
-    setFormData((prev) => ({ ...prev, tags: [] }));
-  };
+  }, []);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header Section */}
-      <div className="mb-10">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-[#5865F2] transition-colors mb-4 group"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
-          Back
-        </button>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Create New Post
-            </h1>
-            <p className="text-gray-600">
-              Start by filling in the basic details. You can add images next.
-            </p>
-          </div>
-          <div className="inline-flex items-center px-4 py-2 bg-[#5865F2]/10 rounded-lg">
-            <Sparkles className="w-4 h-4 text-[#5865F2] mr-2" />
-            <span className="text-sm font-medium text-[#5865F2]">
-              Step 1 of 2
-            </span>
+    <>
+      {/* Loading/Redirecting Overlay */}
+      {(isSubmitting || isRedirecting) && (
+        <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-xl p-8 max-w-xs w-full mx-4 text-center space-y-3">
+            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+            <div>
+              <p className="text-sm font-bold text-gray-900">
+                {isRedirecting ? "Opening Editor" : "Setting up your draft"}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                {isRedirecting ? "Almost there..." : "Just a moment..."}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Form Card */}
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
-        {/* Form Progress Bar */}
-        <div className="h-1.5 bg-gray-100">
-          <div
-            className="h-full bg-gradient-to-r from-[#5865F2] to-[#94BBFF] transition-all duration-500"
-            style={{ width: "50%" }}
-          />
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-8">
-          {/* Title Field */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label
-                htmlFor="title"
-                className="block text-sm font-semibold text-gray-900"
-              >
-                Post Title
-              </label>
-              <span className="text-xs text-gray-500">
-                {formData.title.length}/60 characters
-              </span>
-            </div>
-            <div className="relative">
-              <input
-                type="text"
-                id="title"
-                value={formData.title}
-                onChange={(e) => {
-                  if (e.target.value.length <= 60) {
-                    setFormData({ ...formData, title: e.target.value });
-                    if (errors.title) setErrors({ ...errors, title: "" });
-                  }
-                }}
-                className={`w-full px-4 py-3 rounded-xl border-2 bg-[#F8FAFD] focus:bg-white transition-all duration-200
-                  text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#94BBFF]/30
-                  ${
-                    errors.title
-                      ? "border-red-300 focus:border-red-300"
-                      : "border-gray-200 hover:border-[#94BBFF]/50 focus:border-[#5865F2]"
-                  }`}
-                placeholder="What's your post about?"
+      <div className="min-h-screen bg-gray-50 py-12 px-4">
+        <div className="mx-auto max-w-2xl space-y-8">
+          {/* Header */}
+          <header>
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors mb-6 group"
+            >
+              <ArrowLeft
+                size={15}
+                className="group-hover:-translate-x-0.5 transition-transform"
               />
-            </div>
-            {errors.title && (
-              <div className="mt-2 flex items-center text-red-600 text-sm">
-                <div className="w-1.5 h-1.5 bg-red-500 rounded-full mr-2"></div>
-                {errors.title}
-              </div>
-            )}
-          </div>
+              Back
+            </button>
 
-          {/* Description Field */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label
-                htmlFor="description"
-                className="block text-sm font-semibold text-gray-900"
-              >
-                Description
-              </label>
-              <span className="text-xs text-gray-500">
-                {formData.description.length}/500 characters
-              </span>
-            </div>
-            <div className="relative">
-              <textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => {
-                  if (e.target.value.length <= 500) {
-                    setFormData({ ...formData, description: e.target.value });
-                    if (errors.description)
-                      setErrors({ ...errors, description: "" });
-                  }
-                }}
-                rows={5}
-                className={`w-full px-4 py-3 rounded-xl border-2 bg-[#F8FAFD] focus:bg-white transition-all duration-200
-                  text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#94BBFF]/30
-                  resize-none
-                  ${
-                    errors.description
-                      ? "border-red-300 focus:border-red-300"
-                      : "border-gray-200 hover:border-[#94BBFF]/50 focus:border-[#5865F2]"
-                  }`}
-                placeholder="Describe your post, what it's about, and any important notes..."
-              />
-            </div>
-            {errors.description && (
-              <div className="mt-2 flex items-center text-red-600 text-sm">
-                <div className="w-1.5 h-1.5 bg-red-500 rounded-full mr-2"></div>
-                {errors.description}
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+              <div className="space-y-1">
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">
+                  Create Post
+                </h1>
+                <p className="text-sm text-gray-500">
+                  Fill in the basics — you&apos;ll add images in the next step.
+                </p>
               </div>
-            )}
-          </div>
+            </div>
+          </header>
 
-          {/* Category Field - Using Custom Dropdown */}
-          <Dropdown
-            label="Category"
-            options={categoryOptions}
-            value={formData.category}
-            onChange={handleCategoryChange}
-            error={errors.category}
-            placeholder="Select a category"
-            required
-          />
+          {/* Form card */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Progress bar */}
+            <div className="h-1 bg-gray-100">
+              <div className="h-full bg-gradient-to-r from-indigo-500 to-indigo-300" />
+            </div>
 
-          {/* Tags Section */}
-          <div className="space-y-4">
-            {/* Tags Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Tag className="w-5 h-5 text-gray-400 mr-2" />
-                <label className="block text-sm font-semibold text-gray-900">
-                  Tags
-                </label>
-                <span className="ml-2 text-xs text-gray-500">
-                  ({formData.tags.length} selected)
-                </span>
-              </div>
-              {formData.tags.length > 0 && (
-                <button
-                  type="button"
-                  onClick={clearAllTags}
-                  className="text-sm text-red-500 hover:text-red-700 transition-colors"
+            <form onSubmit={handleSubmit} className="divide-y divide-gray-100">
+              <div className="p-6 sm:p-8 space-y-6">
+                {/* Title */}
+                <Field
+                  label="Title"
+                  counter={`${formData.title.length}/60`}
+                  error={errors.title}
                 >
-                  Clear all
-                </button>
-              )}
-            </div>
-
-            {/* Selected Tags */}
-            {formData.tags.length > 0 && (
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center">
-                    <div className="w-2 h-2 bg-[#5865F2] rounded-full mr-2"></div>
-                    <span className="text-sm font-medium text-gray-700">
-                      Selected Tags
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTagsOpen(!selectedTagsOpen)}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    {selectedTagsOpen ? (
-                      <ChevronUp className="w-4 h-4" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4" />
+                  <div className="relative group">
+                    <input
+                      type="text"
+                      value={formData.title}
+                      onChange={(e) => {
+                        setFormData({
+                          ...formData,
+                          title: e.target.value.slice(0, 60),
+                        });
+                        if (errors.title) setErrors({ ...errors, title: "" });
+                      }}
+                      placeholder="What's your post about?"
+                      className={inputClass(!!errors.title)}
+                    />
+                    {formData.title && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, title: "" })}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-gray-300 hover:text-gray-500 transition-colors opacity-0 group-focus-within:opacity-100"
+                      >
+                        <X size={14} />
+                      </button>
                     )}
-                  </button>
+                  </div>
+                </Field>
+
+                {/* Category */}
+                <Field label="Category" error={errors.category}>
+                  <div className="relative">
+                    <select
+                      value={formData.category}
+                      onChange={(e) => {
+                        setFormData({
+                          ...formData,
+                          category: e.target.value as Category,
+                        });
+                        if (errors.category)
+                          setErrors({ ...errors, category: "" });
+                      }}
+                      className={`${inputClass(!!errors.category)} appearance-none pr-10 cursor-pointer`}
+                    >
+                      <option value="">Select a category</option>
+                      {Object.values(Category).map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      size={15}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                    />
+                  </div>
+                </Field>
+
+                {/* Description */}
+                <Field
+                  label="Description"
+                  counter={`${formData.description.length}/500`}
+                  error={errors.description}
+                >
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => {
+                      setFormData({
+                        ...formData,
+                        description: e.target.value.slice(0, 500),
+                      });
+                      if (errors.description)
+                        setErrors({ ...errors, description: "" });
+                    }}
+                    rows={4}
+                    placeholder="Describe your post — what it covers, any useful context…"
+                    className={`${inputClass(!!errors.description)} resize-none`}
+                  />
+                </Field>
+              </div>
+
+              {/* Tags section */}
+              <div className="p-6 sm:p-8 space-y-4 bg-gray-50/60">
+                {/* Tags header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag size={14} className="text-gray-400" />
+                    <span className="text-sm font-semibold text-gray-900">
+                      Tags
+                    </span>
+                    {formData.tags.length > 0 && (
+                      <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                        {formData.tags.length} selected
+                      </span>
+                    )}
+                  </div>
+                  {formData.tags.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({ ...prev, tags: [] }))
+                      }
+                      className="text-xs font-medium text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      Clear all
+                    </button>
+                  )}
                 </div>
 
-                {selectedTagsOpen && (
-                  <div className="flex flex-wrap gap-2">
+                {/* Selected tag pills */}
+                {formData.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 p-3 bg-white rounded-xl border border-gray-100">
                     {formData.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-[#5865F2]/10 to-[#94BBFF]/10 text-[#5865F2] rounded-lg text-sm font-medium border border-[#94BBFF]/20"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg text-xs font-medium"
                       >
-                        <Hash className="w-3 h-3 mr-1.5" />
+                        <Hash size={10} />
                         {tag}
                         <button
                           type="button"
-                          onClick={() => removeTag(tag)}
-                          className="ml-2 text-[#5865F2] hover:text-[#4854e0] transition-colors"
+                          onClick={() => toggleTag(tag)}
+                          className="ml-0.5 text-indigo-400 hover:text-indigo-700 transition-colors"
                         >
-                          <X className="w-3 h-3" />
+                          <X size={11} />
                         </button>
                       </span>
                     ))}
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Tags Selection Panel */}
-            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-              {/* Search Bar */}
-              <div className="mb-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    value={tagSearch}
-                    onChange={(e) => setTagSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && tagSearch.trim()) {
-                        e.preventDefault();
-                        if (!formData.tags.includes(tagSearch.trim())) {
+                {/* Tag picker panel */}
+                <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-4">
+                  {/* Search */}
+                  <div className="relative">
+                    <Search
+                      size={14}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+                    <input
+                      type="text"
+                      value={tagSearch}
+                      onChange={(e) => setTagSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && tagSearch.trim()) {
+                          e.preventDefault();
                           toggleTag(tagSearch.trim());
+                          setTagSearch("");
                         }
-                        setTagSearch("");
-                      }
-                    }}
-                    placeholder="Search or create tags (Press Enter)..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#94BBFF]/30 focus:border-[#5865F2] text-sm"
-                  />
-                  {tagSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setTagSearch("")}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
+                      }}
+                      placeholder="Search or create a tag (Enter to add)…"
+                      className="w-full pl-9 pr-9 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 focus:bg-white transition-all"
+                    />
+                    {tagSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setTagSearch("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                    {isCheckingTag && (
+                      <Loader2
+                        size={13}
+                        className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-400 animate-spin"
+                      />
+                    )}
+                  </div>
 
-              {/* Tags Grid */}
-              <div className="mb-4">
-                <p className="text-sm text-gray-600 mb-3">
-                  {filteredTags.length === tagOptions.length
-                    ? `Select relevant tags from ${tagOptions.length} options:`
-                    : `Found ${filteredTags.length} matching tags:`}
-                </p>
-                <div className="flex flex-wrap gap-2 max-h-60 overflow-y-auto pr-2">
-                  {tagSearch.trim() &&
-                    !filteredTags.some(
-                      (t) => t.toLowerCase() === tagSearch.trim().toLowerCase(),
-                    ) &&
-                    !formData.tags.some(
-                      (t) => t.toLowerCase() === tagSearch.trim().toLowerCase(),
-                    ) && (
+                  {/* Tag chips */}
+                  <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
+                    {/* Create new */}
+                    {canCreateTag && (
                       <button
                         type="button"
                         onClick={() => {
                           toggleTag(tagSearch.trim());
                           setTagSearch("");
                         }}
-                        className="inline-flex items-center px-3 py-2 rounded-lg border border-dashed border-[#5865F2] text-[#5865F2] hover:bg-[#5865F2]/5 transition-all duration-200"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50 text-xs font-medium transition-all"
                       >
-                        <Sparkles className="w-3 h-3 mr-1.5" />
-                        <span className="text-sm font-medium">
-                          Create &quot;{tagSearch.trim()}&quot;
-                        </span>
+                        <Sparkles size={11} />
+                        Create &quot;{tagSearch.trim()}&quot;
                       </button>
                     )}
-                  {displayedTags.map((tag) => {
-                    const isSelected = formData.tags.includes(tag);
-                    return (
-                      <button
-                        type="button"
-                        key={tag}
-                        onClick={() => toggleTag(tag)}
-                        className={`inline-flex items-center px-3 py-2 rounded-lg border transition-all duration-200
-                          ${
-                            isSelected
-                              ? "bg-gradient-to-r from-[#5865F2] to-[#94BBFF] text-white border-transparent shadow-sm"
-                              : "bg-white text-gray-700 border-gray-300 hover:border-[#94BBFF] hover:text-[#5865F2] hover:bg-[#F8FAFD]"
-                          }`}
-                      >
-                        <Hash
-                          className={`w-3 h-3 mr-1.5 ${
-                            isSelected ? "opacity-90" : "opacity-60"
-                          }`}
-                        />
-                        <span className="text-sm font-medium">{tag}</span>
-                      </button>
-                    );
-                  })}
+
+                    {/* DB match — exists in DB but not in visible list */}
+                    {isTagInDb &&
+                      !isCheckingTag &&
+                      !tagOptions.some(
+                        (t) =>
+                          t.toLowerCase() === tagSearch.trim().toLowerCase(),
+                      ) &&
+                      !formData.tags.some(
+                        (t) =>
+                          t.toLowerCase() === tagSearch.trim().toLowerCase(),
+                      ) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleTag(tagSearch.trim());
+                            setTagSearch("");
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white text-gray-600 border border-gray-200 hover:border-indigo-200 hover:text-indigo-600 hover:bg-indigo-50 text-xs font-medium transition-all"
+                        >
+                          <Hash size={10} className="opacity-60" />
+                          {tagSearch.trim().charAt(0).toUpperCase() +
+                            tagSearch.trim().slice(1)}
+                        </button>
+                      )}
+
+                    {displayedTags.map((tag) => {
+                      const isSelected = formData.tags.some(
+                        (t) => t.toLowerCase() === tag.toLowerCase(),
+                      );
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleTag(tag)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all
+          ${
+            isSelected
+              ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+              : "bg-white text-gray-600 border-gray-200 hover:border-indigo-200 hover:text-indigo-600 hover:bg-indigo-50"
+          }`}
+                        >
+                          <Hash
+                            size={10}
+                            className={isSelected ? "opacity-80" : "opacity-40"}
+                          />
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
-              {/* Show More/Less Button */}
-              {filteredTags.length > 12 && (
-                <div className="text-center pt-2 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={() => setShowAllTags(!showAllTags)}
-                    className="inline-flex items-center text-sm font-medium text-[#5865F2] hover:text-[#4854e0] transition-colors"
-                  >
-                    {showAllTags ? (
-                      <>
-                        <ChevronUp className="w-4 h-4 mr-1" />
-                        Show Less
-                        <span className="ml-1 text-gray-500">
-                          ({filteredTags.length - 12} hidden)
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <ChevronDown className="w-4 h-4 mr-1" />
-                        Show All {filteredTags.length} Tags
-                        <span className="ml-1 text-gray-500">
-                          ({filteredTags.length - 12} more)
-                        </span>
-                      </>
+              {/* Footer */}
+              <div className="px-6 sm:px-8 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    <span className="font-medium text-gray-500">Note:</span>{" "}
+                    Saves as a draft — you&apos;ll add images and publish next.
+                  </p>
+                  {errors &&
+                    (errors.title || errors.description || errors.category) && (
+                      <p className="flex items-center gap-1.5 text-xs text-red-600 font-medium mt-2 sm:mt-0">
+                        <span className="w-1 h-1 rounded-full bg-red-500 inline-block flex-shrink-0" />
+                        Please fix the errors above before continuing.
+                      </p>
                     )}
-                  </button>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Submit Button */}
-          <div className="pt-6 border-t border-gray-100">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Note:</span> Your post will be
-                  saved as a draft. You&apos;ll add images and publish in the
-                  next step.
-                </p>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  disabled={isSubmitting}
+                  className="flex items-center justify-center gap-2 min-w-[160px] rounded-xl shadow-sm shadow-indigo-200 whitespace-nowrap"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      Creating…
+                    </>
+                  ) : (
+                    <>
+                      Continue
+                      <ArrowRight size={15} />
+                    </>
+                  )}
+                </Button>
               </div>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                variant="gradient"
-                size="lg"
-                className="min-w-[180px]"
-              >
-                {isSubmitting ? (
-                  <span className="flex items-center justify-center">
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Creating Draft...
-                  </span>
-                ) : (
-                  <span className="flex items-center justify-center">
-                    Continue to Edit
-                    <ArrowLeft className="w-4 h-4 ml-2 transform rotate-180" />
-                  </span>
-                )}
-              </Button>
-            </div>
-          </div>
-        </form>
-      </div>
-
-      {/* Loading Overlay */}
-      {isSubmitting && (
-        <div className="fixed inset-0 bg-black/10 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-sm mx-4">
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 border-4 border-[#5865F2]/20 border-t-[#5865F2] rounded-full animate-spin mb-4"></div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Creating your post
-              </h3>
-              <p className="text-gray-600 text-center">
-                Setting up your draft and preparing the editor...
-              </p>
-            </div>
+            </form>
           </div>
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 };
 
