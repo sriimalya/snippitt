@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { Check, Share } from "lucide-react";
+import { Check, Share2 } from "lucide-react";
 import { handleShare } from "@/lib/share";
 
 interface ShareActionButtonProps {
@@ -32,7 +32,7 @@ const ShareActionButton: React.FC<ShareActionButtonProps> = ({
         </>
       ) : (
         <>
-          <Share size={16} className="mr-2" /> Share
+          <Share2 size={16} className="mr-2" /> Share
         </>
       )}
     </button>

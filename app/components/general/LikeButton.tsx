@@ -55,20 +55,20 @@ const LikeButton: React.FC<LikeButtonProps> = ({
   };
 
   return (
-    <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={handleLike}
         disabled={isPending}
-        className="p-1 cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none"
+        className="cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none"
         aria-label={liked ? "Unlike" : "Like"}
       >
         <Heart
-          size={18}
+          size={20}
           strokeWidth={2}
           className={`transition-all duration-200 ${
             liked
               ? "fill-red-500 stroke-red-500"
-              : "fill-transparent stroke-gray-500 hover:stroke-red-500"
+              : "fill-transparent stroke-gray-500 md:hover:stroke-red-500"
           }`}
         />
       </button>

@@ -64,15 +64,15 @@ const ToggleSaveButton: React.FC<ToggleSaveButtonProps> = ({
   };
 
   return (
-    <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={handleToggle}
         disabled={isPending}
-        className="p-1 cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none"
+        className="cursor-pointer flex items-center justify-center transition active:scale-90 focus:outline-none"
         aria-label={isSaved ? "Unsave" : "Save"}
       >
         <Bookmark
-          size={18}
+          size={20}
           strokeWidth={2}
           className={`transition-all duration-200 ${
             isSaved
