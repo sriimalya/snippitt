@@ -36,181 +36,100 @@ const UpdatePostSchema = z.object({
 
 export type UpdatePostInput = z.infer<typeof UpdatePostSchema>;
 
-export async function updatePost(input: UpdatePostInput): Promise<{
-  success: boolean;
-  message: string;
-  code?: string;
-  data?: Post;
-}> {
+export async function updatePost(input: UpdatePostInput) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return {
-        success: false,
-        message: "Unauthorized",
-        code: "UNAUTHORIZED",
-      };
-    }
+    if (!session?.user?.id) return { success: false, message: "Unauthorized", code: "UNAUTHORIZED" };
 
-    // Validate input
     const validatedData = UpdatePostSchema.parse(input);
-    const {
-      id: postId,
-      title,
-      description,
-      tags,
-      category,
-      visibility,
-      images: incomingImages,
-      isDraft,
-    } = validatedData;
-
+    const { id: postId, title, description, tags, category, visibility, images: incomingImages, isDraft } = validatedData;
     const userId = session.user.id;
 
-    // Get existing post
     const existingPost = await prisma.post.findUnique({
       where: { id: postId, userId },
-      include: {
-        images: {
-          select: {
-            id: true,
-            url: true,
-            description: true,
-            isCover: true,
-          },
-        },
-      },
+      include: { images: { select: { id: true, url: true, description: true, isCover: true } } },
     });
 
-    if (!existingPost) {
-      return {
-        success: false,
-        message: "Post not found or access denied",
-        code: "POST_NOT_FOUND",
-      };
-    }
+    if (!existingPost) return { success: false, message: "Post not found or access denied", code: "POST_NOT_FOUND" };
 
-    // Helper to clean URLs
     const cleanUrl = (url: string) => url.split("?")[0].split("#")[0];
-
-    // Categorize images
-    const existingImageUrls = existingPost.images.map((img) =>
-      cleanUrl(img.url),
-    );
+    const existingImageUrls = existingPost.images.map((img) => cleanUrl(img.url));
 
     const newImages = incomingImages.filter(
-      (img) =>
-        !img.existingImageId && !existingImageUrls.includes(cleanUrl(img.url)),
+      (img) => !img.existingImageId && !existingImageUrls.includes(cleanUrl(img.url)),
     );
-
     const updatedImages = incomingImages.filter(
-      (img) =>
-        img.existingImageId && existingImageUrls.includes(cleanUrl(img.url)),
+      (img) => img.existingImageId && existingImageUrls.includes(cleanUrl(img.url)),
     );
-
     const deletedImages = existingPost.images.filter(
-      (img) =>
-        !incomingImages.some((i) => cleanUrl(i.url) === cleanUrl(img.url)),
+      (img) => !incomingImages.some((i) => cleanUrl(i.url) === cleanUrl(img.url)),
     );
 
-    // Process new images (move from temp to permanent)
-    // ... inside updatePost.ts
+    // All heavy async work BEFORE the transaction
+
+    // 1. Process new images (S3 move)
     const processedNewImages = await Promise.all(
       newImages.map(async (img) => {
         try {
-          if (img.url.includes("/uploads/")) {
-            return { ...img, url: cleanUrl(img.url) };
-          }
-
+          if (img.url.includes("/uploads/")) return { ...img, url: cleanUrl(img.url) };
           const tempKey = extractKeyFromUrl(img.url);
           const newUrl = await changeFileVisibility(tempKey);
           return { ...img, url: cleanUrl(newUrl) };
         } catch (error: any) {
-          // If S3 says the file is gone, it's because Phase 1 succeeded
-          // but the DB failed previously. Use the current URL.
-          if (error.message === "SOURCE_MISSING") {
-            return { ...img, url: cleanUrl(img.url) };
-          }
+          if (error.message === "SOURCE_MISSING") return { ...img, url: cleanUrl(img.url) };
           throw error;
         }
       }),
     );
 
-    // Optional: Change deletedImages cleanup to use moveFileToTrash
+    // 2. Trash deleted images from S3
     await Promise.allSettled(
       deletedImages.map(async (img) => {
         try {
           const key = extractKeyFromUrl(img.url);
-          // Use trash instead of permanent delete for safety
           await moveFileToTrash(key);
         } catch (error) {
           console.error("Failed to move image to trash:", img.url, error);
         }
       }),
     );
-    // ...
 
-    // Delete removed images from S3
-    await Promise.allSettled(
-      deletedImages.map(async (img) => {
-        try {
-          const key = extractKeyFromUrl(img.url);
-          await deleteFile(key);
-        } catch (error) {
-          console.error("Failed to delete image from S3:", img.url, error);
-        }
-      }),
+    // 3. Upsert tags and get their IDs — outside transaction
+    const tagRecords = await Promise.all(
+      tags.map((tagName) =>
+        prisma.tag.upsert({
+          where: { name: tagName.toLowerCase() },
+          update: {},
+          create: { name: tagName.toLowerCase() },
+        }),
+      ),
     );
 
-    // Update database in transaction
+    // Transaction is now only fast DB writes 
     const updatedPost = await prisma.$transaction(async (tx) => {
-      // 1. Delete removed images
+      // Delete removed images from DB
       if (deletedImages.length > 0) {
         await tx.image.deleteMany({
-          where: {
-            postId,
-            id: { in: deletedImages.map((img) => img.id) },
-          },
+          where: { postId, id: { in: deletedImages.map((img) => img.id) } },
         });
       }
 
-      // 2. Reset all cover flags
-      await tx.image.updateMany({
-        where: { postId },
-        data: { isCover: false },
-      });
+      // Reset all cover flags
+      await tx.image.updateMany({ where: { postId }, data: { isCover: false } });
 
-      // 3. Update post
-      const post = await tx.post.update({
+      // Update post
+      await tx.post.update({
         where: { id: postId, userId },
-        data: {
-          title,
-          description,
-          category,
-          visibility,
-          isDraft,
-          updatedAt: new Date(),
-        },
+        data: { title, description, category, visibility, isDraft, updatedAt: new Date() },
       });
+
+      // Replace tags
       await tx.postTag.deleteMany({ where: { postId } });
+      await tx.postTag.createMany({
+        data: tagRecords.map((tag) => ({ postId, tagId: tag.id })),
+      });
 
-      if (tags.length > 0) {
-        const tagOperations = tags.map(async (tagName) => {
-          const tag = await tx.tag.upsert({
-            where: { name: tagName.toLowerCase() },
-            update: {},
-            create: { name: tagName.toLowerCase() },
-          });
-
-          await tx.postTag.create({
-            data: { postId, tagId: tag.id },
-          });
-        });
-
-        await Promise.all(tagOperations);
-      }
-
-      // 4. Create new images
+      // Create new images
       if (processedNewImages.length > 0) {
         await tx.image.createMany({
           data: processedNewImages.map((img) => ({
@@ -222,63 +141,30 @@ export async function updatePost(input: UpdatePostInput): Promise<{
         });
       }
 
-      // 5. Update existing images
+      // Update existing images
       for (const img of updatedImages) {
-        const existing = existingPost.images.find(
-          (ex) => ex.id === img.existingImageId,
-        );
+        const existing = existingPost.images.find((ex) => ex.id === img.existingImageId);
         if (existing) {
           await tx.image.update({
             where: { id: existing.id },
-            data: {
-              description: img.description,
-              isCover: img.isCover,
-            },
+            data: { description: img.description, isCover: img.isCover },
           });
         }
       }
 
-      // 6. Handle tags
-      await tx.postTag.deleteMany({ where: { postId } });
-
-      if (tags.length > 0) {
-        const tagOperations = tags.map(async (tagName) => {
-          const tag = await tx.tag.upsert({
-            where: { name: tagName.toLowerCase() },
-            update: {},
-            create: { name: tagName.toLowerCase() },
-          });
-
-          await tx.postTag.create({
-            data: { postId, tagId: tag.id },
-          });
-        });
-
-        await Promise.all(tagOperations);
-      }
-
-      // Return updated post with relations
       return await tx.post.findUnique({
         where: { id: postId },
         include: {
           images: { orderBy: { createdAt: "asc" } },
           tags: { include: { tag: true } },
-          _count: {
-            select: { likes: true, comments: true, savedBy: true },
-          },
+          _count: { select: { likes: true, comments: true, savedBy: true } },
           likes: { where: { userId }, select: { userId: true } },
           savedBy: { where: { userId }, select: { userId: true } },
         },
       });
-    });
+    }); // no timeout option needed — transaction is now fast
 
-    if (!updatedPost) {
-      return {
-        success: false,
-        message: "Failed to update post",
-        code: "UPDATE_FAILED",
-      };
-    }
+    if (!updatedPost) return { success: false, message: "Failed to update post", code: "UPDATE_FAILED" };
 
     // Transform to Post interface
     const transformedPost: Post = {
