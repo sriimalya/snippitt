@@ -4,13 +4,27 @@ import prisma from "@/lib/prisma";
 import {
   
 } from "@/lib/aws_s3";
-export async function createCollection(name: string) {
+import { Visibility } from "@/app/generated/prisma/enums";
+
+export async function createCollection(input: string | {
+  name: string;
+  description?: string;
+  coverImage?: string;
+  visibility?: Visibility;
+  isDraft?: boolean;
+}) {
   const session = await getSession();
   if (!session?.id)
     return {
       success: false,
       error: { message: "Unauthorized", code: "UNAUTHORIZED" },
     };
+
+  const name = typeof input === "string" ? input : input.name;
+  const description = typeof input === "string" ? undefined : input.description;
+  const coverImage = typeof input === "string" ? undefined : input.coverImage;
+  const visibility = typeof input === "string" ? undefined : input.visibility;
+  const isDraft = typeof input === "string" ? false : !!input.isDraft;
 
   try {
     const existing = await prisma.collection.findFirst({
@@ -27,11 +41,19 @@ export async function createCollection(name: string) {
       };
 
     const newCol = await prisma.collection.create({
-      data: { name, userId: session.id },
+      data: { 
+        name, 
+        userId: session.id,
+        description,
+        coverImage,
+        visibility: visibility || Visibility.PRIVATE,
+        isDraft
+      },
     });
 
     return { success: true, data: newCol };
   } catch (error) {
+    console.error("Create collection error:", error);
     return {
       success: false,
       error: { message: "Failed to create", code: "SERVER_ERROR" },
@@ -164,7 +186,7 @@ export async function getUserCollectionNames(postId: string) {
     }));
 
     return { success: true, data };
-  } catch (error) {
+  } catch {
     return {
       success: false,
       error: { message: "Failed to fetch collections" },

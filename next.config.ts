@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",
@@ -12,6 +13,7 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "snippit-user-media.s3.ap-south-1.amazonaws.com",
+        
       },
       {
         protocol: "https",

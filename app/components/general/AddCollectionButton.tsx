@@ -80,7 +80,7 @@ const AddCollectionButton: React.FC<AddCollectionButtonProps> = ({ postId }) => 
     if (!newCollectionName.trim()) return;
     setIsCreating(true);
     try {
-      const result = await createCollection(newCollectionName);
+      const result = await createCollection({ name: newCollectionName });
       if (result.success) {
         setNewCollectionName("");
         toast.success("Collection created!");
@@ -97,7 +97,7 @@ const AddCollectionButton: React.FC<AddCollectionButtonProps> = ({ postId }) => 
 
   const modal = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
       onClick={() =>{ setIsOpen(false)}}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -148,13 +148,13 @@ const AddCollectionButton: React.FC<AddCollectionButtonProps> = ({ postId }) => 
                   className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all text-left group"
                 >
                   <div className="flex items-center gap-2.5">
-                    <Folder size={15} className="text-gray-400 group-hover:text-indigo-500 transition-colors flex-shrink-0" />
+                    <Folder size={15} className="text-gray-400 group-hover:text-indigo-500 transition-colors shrink-0" />
                     <span className="text-sm font-medium text-gray-700 group-hover:text-indigo-700 transition-colors">
                       {col.name}
                     </span>
                   </div>
                   {col.hasPost && (
-                    <Check size={14} className="text-emerald-500 flex-shrink-0" />
+                    <Check size={14} className="text-emerald-500 shrink-0" />
                   )}
                 </button>
               ))
