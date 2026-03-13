@@ -14,7 +14,6 @@ import {
   Lock, 
   Users,
   Camera,
-  FileText
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -68,7 +67,6 @@ export default function NewCollectionPage() {
     name: "",
     description: "",
     visibility: Visibility.PRIVATE as Visibility,
-    isDraft: false,
     coverImage: "",
   });
 
@@ -306,55 +304,29 @@ export default function NewCollectionPage() {
                 />
               </Field>
 
-              {/* Visibility & Status */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <label className="text-sm font-semibold text-gray-900">Visibility</label>
-                  <div className="flex p-1 bg-gray-50 rounded-xl border border-gray-100">
-                    {[
-                      { id: Visibility.PUBLIC, icon: <Globe size={14} />, label: "Public" },
-                      { id: Visibility.FOLLOWERS, icon: <Users size={14} />, label: "Follow" },
-                      { id: Visibility.PRIVATE, icon: <Lock size={14} />, label: "Private" },
-                    ].map((v) => (
-                      <button
-                        key={v.id}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, visibility: v.id })}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
-                          formData.visibility === v.id
-                            ? "bg-white text-indigo-600 shadow-sm border border-indigo-100"
-                            : "text-gray-400 hover:text-gray-600"
-                        }`}
-                      >
-                        {v.icon}
-                        <span className="hidden sm:inline">{v.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-sm font-semibold text-gray-900">Status</label>
-                  <div className="flex p-1 bg-gray-50 rounded-xl border border-gray-100">
-                    {[
-                      { id: false, icon: <Sparkles size={14} />, label: "Published" },
-                      { id: true, icon: <FileText size={14} />, label: "Draft" },
-                    ].map((s) => (
-                      <button
-                        key={String(s.id)}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, isDraft: s.id })}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
-                          formData.isDraft === s.id
-                            ? "bg-white text-indigo-600 shadow-sm border border-indigo-100"
-                            : "text-gray-400 hover:text-gray-600"
-                        }`}
-                      >
-                        {s.icon}
-                        <span>{s.label}</span>
-                      </button>
-                    ))}
-                  </div>
+              {/* Visibility */}
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-gray-900">Visibility</label>
+                <div className="flex p-1 bg-gray-50 rounded-xl border border-gray-100 max-w-sm">
+                  {[
+                    { id: Visibility.PUBLIC, icon: <Globe size={14} />, label: "Public" },
+                    { id: Visibility.FOLLOWERS, icon: <Users size={14} />, label: "Followers" },
+                    { id: Visibility.PRIVATE, icon: <Lock size={14} />, label: "Private" },
+                  ].map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, visibility: v.id })}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                        formData.visibility === v.id
+                          ? "bg-white text-indigo-600 shadow-sm border border-indigo-100"
+                          : "text-gray-400 hover:text-gray-600"
+                      }`}
+                    >
+                      {v.icon}
+                      <span className="">{v.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

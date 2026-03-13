@@ -26,7 +26,7 @@ async function getSignedUrl(url: string | null | undefined) {
   try {
     const key = extractKeyFromUrl(url);
     return await generatePresignedViewUrl(key);
-  } catch (error) {
+  } catch {
     console.error("S3 Signing failed for URL:", url);
     return url; // Fallback to raw URL
   }
@@ -54,14 +54,8 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
     };
 
     if (isOwner) {
-      if (!options.visibility) {
-        // ALL
-        whereClause.isDraft = false;
-      } else if (options.visibility === "DRAFT") {
-        whereClause.isDraft = true;
-      } else {
+      if (options.visibility) {
         whereClause.visibility = options.visibility;
-        whereClause.isDraft = false;
       }
     } else {
       let isFollowing = false;
@@ -79,7 +73,6 @@ export async function getUserCollections(options: GetCollectionsOptions = {}) {
         isFollowing = !!follow;
       }
 
-      whereClause.isDraft = false;
       whereClause.OR = [
         { visibility: "PUBLIC" },
         ...(isFollowing ? [{ visibility: "FOLLOWERS" }] : []),

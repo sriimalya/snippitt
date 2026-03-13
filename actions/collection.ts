@@ -11,7 +11,6 @@ export async function createCollection(input: string | {
   description?: string;
   coverImage?: string;
   visibility?: Visibility;
-  isDraft?: boolean;
 }) {
   const session = await getSession();
   if (!session?.id)
@@ -24,7 +23,6 @@ export async function createCollection(input: string | {
   const description = typeof input === "string" ? undefined : input.description;
   const coverImage = typeof input === "string" ? undefined : input.coverImage;
   const visibility = typeof input === "string" ? undefined : input.visibility;
-  const isDraft = typeof input === "string" ? false : !!input.isDraft;
 
   try {
     const existing = await prisma.collection.findFirst({
@@ -47,7 +45,7 @@ export async function createCollection(input: string | {
         description,
         coverImage,
         visibility: visibility || Visibility.PRIVATE,
-        isDraft
+        isDraft: false
       },
     });
 

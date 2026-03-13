@@ -59,12 +59,8 @@ const CollectionDetailsClient = ({
 }: any) => {
   const [showActions, setShowAction] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
-  const [formattedDate, setFormattedDate] = useState<string>("");
+  const formattedDate = format(new Date(collection.createdAt), "MMM dd, yyyy");
   const actionRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setFormattedDate(format(new Date(collection.createdAt), "MMM dd, yyyy"));
-  }, [collection.createdAt]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -136,13 +132,11 @@ const CollectionDetailsClient = ({
                       <DeleteCollectionButton collectionId={collection.id} />
                     </>
                   )}
-                  {!collection.isDraft && (
-                    <ShareActionButton
-                      id={collection.id}
-                      title={collection.title}
-                      url={`${process.env.NEXT_PUBLIC_APP_URL}/collections/${collection.id}`}
-                    />
-                  )}
+                  <ShareActionButton
+                    id={collection.id}
+                    title={collection.name}
+                    url={`${process.env.NEXT_PUBLIC_APP_URL}/collections/${collection.id}`}
+                  />
                 </div>
               )}
             </div>
