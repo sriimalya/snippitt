@@ -36,7 +36,9 @@ import {
   Hash,
   Tag,
   ChevronDown,
+  ChevronRight,
   Maximize2,
+  Edit2,
 } from "lucide-react";
 import { getPost } from "@/actions/posts/getPost";
 import { deletePost } from "@/actions/posts/deletePost";
@@ -102,21 +104,38 @@ const Field = ({
 const MAX_SIZE_MB = 10;
 const MAX_FILES = 10;
 
-const VISIBILITY_OPTIONS: {
-  value: Visibility;
-  label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  desc: string;
-}[] = [
-  { value: "PRIVATE", label: "Private", icon: Lock, desc: "Only you" },
-  {
-    value: "FOLLOWERS",
-    label: "Followers",
-    icon: Users,
-    desc: "Followers only",
-  },
-  { value: "PUBLIC", label: "Public", icon: Globe, desc: "Everyone" },
-];
+/* Visibility badge */
+const VisibilityBadge = ({ visibility }: { visibility: string }) => {
+  const map: Record<
+    string,
+    { icon: React.ReactNode; label: string; cls: string }
+  > = {
+    PUBLIC: {
+      icon: <Globe size={10} />,
+      label: "Public",
+      cls: "bg-emerald-50 text-emerald-600 border-emerald-100",
+    },
+    PRIVATE: {
+      icon: <Lock size={10} />,
+      label: "Private",
+      cls: "bg-gray-100 text-gray-500 border-gray-200",
+    },
+    FOLLOWERS: {
+      icon: <Users size={10} />,
+      label: "Followers",
+      cls: "bg-indigo-50 text-indigo-600 border-indigo-100",
+    },
+  };
+  const v = map[visibility] ?? map.PRIVATE;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider ${v.cls}`}
+    >
+      {v.icon}
+      {v.label}
+    </span>
+  );
+};
 
 const EditPostForm = () => {
   const params = useParams();
@@ -261,13 +280,13 @@ const EditPostForm = () => {
             tags: d.tags || [],
           });
           setSelectedVisibility(d.visibility || "PRIVATE");
-          
-          d.images.forEach((img: any, i: number) => {console.log(`Image ${i}:`, img);});
 
           setFiles(
             d.images.map((img: any, i: number) => {
-              const rawName = img.url.split("?")[0].split("/").pop() || `file-${i + 1}`;
-              const extractedName = rawName.split("-").slice(3).join("-") || rawName;
+              const rawName =
+                img.url.split("?")[0].split("/").pop() || `file-${i + 1}`;
+              const extractedName =
+                rawName.split("-").slice(3).join("-") || rawName;
 
               return {
                 id: img.id || `existing-${i}`,
@@ -611,7 +630,13 @@ const EditPostForm = () => {
 
   /* ── submit ── */
   const handleSubmit = useCallback(
-    async (isDraft = false) => {
+    async ({
+      isDraft,
+      visibility,
+    }: {
+      isDraft: boolean;
+      visibility: Visibility;
+    }) => {
       if (!formData.title.trim()) {
         toast.error("Please enter a title");
         return;
@@ -639,7 +664,6 @@ const EditPostForm = () => {
         }
       }
 
-      /* ensure cover */
       const imgs = files.filter((f) => f.fileType === "image");
       if (imgs.length && !files.some((f) => f.isCover)) {
         const fi = files.findIndex((f) => f.fileType === "image");
@@ -652,7 +676,7 @@ const EditPostForm = () => {
         const result = await updatePost({
           id: postId,
           ...formData,
-          visibility: isDraft ? "PRIVATE" : selectedVisibility,
+          visibility: isDraft ? "PRIVATE" : visibility, // ← visibility passed directly, not from stale state
           isDraft,
           images: files.map((f) => ({
             url: f.isUploaded ? f.s3Url || f.preview : f.preview,
@@ -664,7 +688,7 @@ const EditPostForm = () => {
         if (result.success) {
           setIsSubmitting(false);
           setIsRedirecting(true);
-          toast.success(isDraft ? "Draft saved!" : "Post published!");
+          toast.success(isDraft ? "Saved as draft" : "Post saved!");
           files.forEach((f) => {
             if (f.preview.startsWith("blob:")) URL.revokeObjectURL(f.preview);
           });
@@ -681,7 +705,7 @@ const EditPostForm = () => {
         setIsRedirecting(false);
       }
     },
-    [formData, files, postId, selectedVisibility, uploadFiles, router],
+    [formData, files, postId, uploadFiles, router],
   );
 
   /* ── delete ── */
@@ -1126,50 +1150,6 @@ const EditPostForm = () => {
                         </div>
                       </div>
                     </div>
-
-                    {/* Visibility */}
-                    <div className="p-6 sm:p-8 space-y-4">
-                      <div className="flex items-center gap-2">
-                        <EyeIcon size={14} className="text-gray-400" />
-                        <span className="text-sm font-semibold text-gray-900">
-                          Visibility
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        {VISIBILITY_OPTIONS.map(
-                          ({ value, label, icon: Icon, desc }) => {
-                            const active = selectedVisibility === value;
-                            return (
-                              <button
-                                key={value}
-                                type="button"
-                                onClick={() => setSelectedVisibility(value)}
-                                disabled={isSubmitting}
-                                className={`p-4 rounded-xl border-2 text-left transition-all group
-                              ${
-                                active
-                                  ? "border-indigo-500 bg-indigo-50"
-                                  : "border-gray-200 hover:border-indigo-200 hover:bg-gray-50"
-                              }`}
-                              >
-                                <Icon
-                                  size={15}
-                                  className={`mb-2 transition-colors ${active ? "text-indigo-600" : "text-gray-400 group-hover:text-indigo-400"}`}
-                                />
-                                <p
-                                  className={`text-sm font-bold ${active ? "text-indigo-700" : "text-gray-700"}`}
-                                >
-                                  {label}
-                                </p>
-                                <p className="text-xs text-gray-400 mt-0.5">
-                                  {desc}
-                                </p>
-                              </button>
-                            );
-                          },
-                        )}
-                      </div>
-                    </div>
                   </div>
                 </div>
               )}
@@ -1581,64 +1561,171 @@ const EditPostForm = () => {
 
             {/* Right column (1/3) */}
             <div className="space-y-4">
-              {/* Publish actions */}
+              {/* Current status badge */}
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
-                <div className="flex items-center gap-2">
-                  <Zap size={14} className="text-indigo-500" />
+                <div className="flex flex-col items-start justify-center gap-2">
                   <span className="text-sm font-extrabold text-gray-900 uppercase tracking-wider">
-                    Publish
+                    Visibility
+                  </span>
+                  <div className="flex items-center justify-center gap-2">
+                    <VisibilityBadge visibility={post.visibility} />
+
+                    {post.isDraft && (
+                      <span className="bg-yellow-50 text-yellow-600 border-yellow-100 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider">
+                        <Edit2 size={10} /> Draft
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-gray-400">
+                    {post.isDraft
+                      ? "This post is a draft. Only you can see it."
+                      : post.visibility === "PUBLIC"
+                        ? "Visible to everyone."
+                        : post.visibility === "FOLLOWERS"
+                          ? "Visible to your followers."
+                          : "Visible only to you."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Publish as */}
+              {/* Publish as */}
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                {/* Header */}
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                  <Zap size={13} className="text-indigo-500" />
+                  <span className="text-xs font-extrabold text-gray-900 uppercase tracking-wider">
+                    Save & Publish
                   </span>
                 </div>
 
-                <div className="space-y-2">
-                  <Button
-                    onClick={() => handleSubmit(false)}
-                    variant="primary"
-                    className="w-full rounded-xl shadow-sm shadow-indigo-200"
-                    disabled={isSubmitting}
-                    icon={
-                      isSubmitting ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Save size={14} />
-                      )
-                    }
-                  >
-                    {isSubmitting ? "Saving…" : "Save Changes"}
-                  </Button>
-                </div>
-
-                <div className="pt-3 border-t border-gray-100 space-y-2">
-                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                    Quick publish
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      {
-                        vis: "PUBLIC" as Visibility,
-                        label: "Public",
-                        icon: <Globe size={12} />,
-                      },
-                      {
-                        vis: "FOLLOWERS" as Visibility,
-                        label: "Followers",
-                        icon: <Users size={12} />,
-                      },
-                    ].map(({ vis, label, icon }) => (
+                <div className="p-3 space-y-2">
+                  {[
+                    {
+                      vis: "PUBLIC" as Visibility,
+                      label: "Public",
+                      icon: Globe,
+                      desc: "Anyone can see this",
+                      iconColor: "text-emerald-600",
+                      iconBg: "bg-emerald-50 group-hover:bg-emerald-100",
+                      border: "border-emerald-200 hover:border-emerald-400",
+                      bg: "hover:bg-emerald-50",
+                      labelColor: "text-emerald-700",
+                    },
+                    {
+                      vis: "FOLLOWERS" as Visibility,
+                      label: "Followers Only",
+                      icon: Users,
+                      desc: "Only your followers",
+                      iconColor: "text-indigo-600",
+                      iconBg: "bg-indigo-50 group-hover:bg-indigo-100",
+                      border: "border-indigo-200 hover:border-indigo-400",
+                      bg: "hover:bg-indigo-50",
+                      labelColor: "text-indigo-700",
+                    },
+                    {
+                      vis: "PRIVATE" as Visibility,
+                      label: "Private",
+                      icon: Lock,
+                      desc: "Only you can see this",
+                      iconColor: "text-gray-500",
+                      iconBg: "bg-gray-100 group-hover:bg-gray-200",
+                      border: "border-gray-200 hover:border-gray-400",
+                      bg: "hover:bg-gray-50",
+                      labelColor: "text-gray-700",
+                    },
+                  ].map(
+                    ({
+                      vis,
+                      label,
+                      icon: Icon,
+                      desc,
+                      iconColor,
+                      iconBg,
+                      border,
+                      bg,
+                      labelColor,
+                    }) => (
                       <button
                         key={vis}
-                        onClick={() => {
-                          setSelectedVisibility(vis);
-                          handleSubmit(false);
-                        }}
+                        onClick={() =>
+                          handleSubmit({ isDraft: false, visibility: vis })
+                        }
                         disabled={isSubmitting}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 transition-all disabled:opacity-50"
+                        className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border ${border} ${bg} bg-white active:scale-[0.98] transition-all disabled:opacity-50 text-left group shadow-sm`}
                       >
-                        {icon}
-                        {label}
+                        <div
+                          className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0 transition-colors`}
+                        >
+                          <Icon size={13} className={iconColor} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p
+                            className={`text-sm font-semibold ${labelColor} leading-none mb-0.5`}
+                          >
+                            {label}
+                          </p>
+                          <p className="text-[11px] text-gray-400">{desc}</p>
+                        </div>
+                        {isSubmitting ? (
+                          <Loader2
+                            size={12}
+                            className="animate-spin text-gray-300 flex-shrink-0"
+                          />
+                        ) : (
+                          <ChevronRight
+                            size={13}
+                            className="text-gray-300 group-hover:text-gray-500 flex-shrink-0 transition-colors"
+                          />
+                        )}
                       </button>
-                    ))}
+                    ),
+                  )}
+
+                  {/* Divider */}
+                  <div className="relative py-1">
+                    <div className="absolute inset-0 flex items-center px-1">
+                      <div className="w-full border-t border-dashed border-gray-200" />
+                    </div>
+                    <div className="relative flex justify-center">
+                      <span className="bg-white px-2 text-[10px] font-bold text-gray-300 uppercase tracking-widest">
+                        or
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Save as draft */}
+                  <button
+                    onClick={() =>
+                      handleSubmit({ isDraft: true, visibility: "PRIVATE" })
+                    }
+                    disabled={isSubmitting}
+                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border border-amber-200 hover:border-amber-400 bg-white hover:bg-amber-50 active:scale-[0.98] transition-all disabled:opacity-50 text-left group shadow-sm"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center flex-shrink-0 transition-colors">
+                      <FileText size={13} className="text-amber-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-amber-700 leading-none mb-0.5">
+                        Save as Draft
+                      </p>
+                      <p className="text-[11px] text-gray-400">
+                        Hidden until published
+                      </p>
+                    </div>
+                    {isSubmitting ? (
+                      <Loader2
+                        size={12}
+                        className="animate-spin text-amber-300 flex-shrink-0"
+                      />
+                    ) : (
+                      <ChevronRight
+                        size={13}
+                        className="text-gray-300 group-hover:text-amber-400 flex-shrink-0 transition-colors"
+                      />
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -1651,7 +1738,7 @@ const EditPostForm = () => {
                   {[
                     "Add captions to each media file",
                     "Use relevant tags for discoverability",
-                    "Choose the right visibility before publishing",
+                    "Drafts are always private until published",
                   ].map((tip) => (
                     <li
                       key={tip}
