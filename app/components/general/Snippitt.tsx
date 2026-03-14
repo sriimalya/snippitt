@@ -233,7 +233,6 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
           fill
           className="object-cover"
           priority
-          unoptimized={true}
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
         />
 
@@ -313,7 +312,6 @@ flex flex-col sm:flex-row gap-4 sm:gap-2 p-2 group"
                     alt="User"
                     fill
                     className="object-cover"
-                    unoptimized
                   />
                 ) : (
                   <div className="bg-indigo-50 w-full h-full flex items-center justify-center text-sm font-bold text-indigo-600">

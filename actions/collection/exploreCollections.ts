@@ -30,7 +30,6 @@ export async function getExploreCollections(
 
     // Visibility Filter Logic
     const visibilityFilter = {
-      isDraft: false,
       OR: [
         { visibility: "PUBLIC" as any },
         ...(currentUserId
