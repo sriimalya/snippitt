@@ -16,9 +16,6 @@ import {
   Upload,
   Image as ImageIcon,
   Video,
-  Users,
-  Globe,
-  Lock,
   CheckCircle,
   AlertCircle,
   Loader2,
@@ -26,7 +23,6 @@ import {
   Star,
   FileText,
   Save,
-  Eye as EyeIcon,
   Zap,
   Camera,
   Trash2,
@@ -36,9 +32,7 @@ import {
   Hash,
   Tag,
   ChevronDown,
-  ChevronRight,
   Maximize2,
-  Edit2,
 } from "lucide-react";
 import { getPost } from "@/actions/posts/getPost";
 import { deletePost } from "@/actions/posts/deletePost";
@@ -47,6 +41,10 @@ import type { Post } from "@/schemas/post";
 import { updatePost } from "@/actions/posts/updatePost";
 import { generatePresignedUrlAction } from "@/actions/upload";
 import { getTags, checkTagExists } from "@/actions/tags";
+import { VisibilityPanel } from "../general/VisibilityPanel";
+import { MediaPreviewModal } from "./MediaPreviewModal";
+import { DeleteModal } from "../general/DeleteModal";
+import { StatsBar } from "../general/StatsBar";
 
 interface FileWithMetadata {
   id: string;
@@ -104,39 +102,6 @@ const Field = ({
 const MAX_SIZE_MB = 10;
 const MAX_FILES = 10;
 
-/* Visibility badge */
-const VisibilityBadge = ({ visibility }: { visibility: string }) => {
-  const map: Record<
-    string,
-    { icon: React.ReactNode; label: string; cls: string }
-  > = {
-    PUBLIC: {
-      icon: <Globe size={10} />,
-      label: "Public",
-      cls: "bg-emerald-50 text-emerald-600 border-emerald-100",
-    },
-    PRIVATE: {
-      icon: <Lock size={10} />,
-      label: "Private",
-      cls: "bg-gray-100 text-gray-500 border-gray-200",
-    },
-    FOLLOWERS: {
-      icon: <Users size={10} />,
-      label: "Followers",
-      cls: "bg-indigo-50 text-indigo-600 border-indigo-100",
-    },
-  };
-  const v = map[visibility] ?? map.PRIVATE;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider ${v.cls}`}
-    >
-      {v.icon}
-      {v.label}
-    </span>
-  );
-};
-
 const EditPostForm = () => {
   const params = useParams();
   const router = useRouter();
@@ -160,6 +125,8 @@ const EditPostForm = () => {
     description: "",
     category: "" as Category,
     tags: [] as string[],
+    isDraft: false,
+    visibility: "PRIVATE" as Visibility,
   });
 
   /* tag state */
@@ -169,7 +136,6 @@ const EditPostForm = () => {
   const [isCheckingTag, setIsCheckingTag] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
   }, []);
@@ -278,6 +244,8 @@ const EditPostForm = () => {
             description: d.description,
             category: d.category as Category,
             tags: d.tags || [],
+            isDraft: d.isDraft ?? false,
+            visibility: d.visibility ?? "PRIVATE",
           });
           setSelectedVisibility(d.visibility || "PRIVATE");
 
@@ -629,84 +597,78 @@ const EditPostForm = () => {
   }, [files]);
 
   /* ── submit ── */
-  const handleSubmit = useCallback(
-    async ({
-      isDraft,
-      visibility,
-    }: {
-      isDraft: boolean;
-      visibility: Visibility;
-    }) => {
-      if (!formData.title.trim()) {
-        toast.error("Please enter a title");
-        return;
-      }
-      if (!formData.category) {
-        toast.error("Please select a category");
-        return;
-      }
-      if (!formData.tags.length) {
-        toast.error("Please add at least one tag");
-        return;
-      }
+  const handleSubmit = useCallback(async () => {
+    if (!formData.title.trim()) {
+      toast.error("Please enter a title");
+      return;
+    }
+    if (!formData.category) {
+      toast.error("Please select a category");
+      return;
+    }
+    if (!formData.tags.length) {
+      toast.error("Please add at least one tag");
+      return;
+    }
 
-      const pending = files.filter((f) => !f.isUploaded);
-      if (pending.length) {
-        if (
-          !window.confirm(
-            `${pending.length} file(s) not yet uploaded. Upload now?`,
-          )
+    const pending = files.filter((f) => !f.isUploaded);
+    if (pending.length) {
+      if (
+        !window.confirm(
+          `${pending.length} file(s) not yet uploaded. Upload now?`,
         )
-          return;
-        if (!(await uploadFiles())) {
-          toast.error("Some uploads failed");
-          return;
-        }
+      )
+        return;
+      if (!(await uploadFiles())) {
+        toast.error("Some uploads failed");
+        return;
       }
+    }
 
-      const imgs = files.filter((f) => f.fileType === "image");
-      if (imgs.length && !files.some((f) => f.isCover)) {
-        const fi = files.findIndex((f) => f.fileType === "image");
-        setFiles((prev) => prev.map((f, i) => ({ ...f, isCover: i === fi })));
-        toast.info("Auto-set first image as cover");
-      }
+    const imgs = files.filter((f) => f.fileType === "image");
+    if (imgs.length && !files.some((f) => f.isCover)) {
+      const fi = files.findIndex((f) => f.fileType === "image");
+      setFiles((prev) => prev.map((f, i) => ({ ...f, isCover: i === fi })));
+      toast.info("Auto-set first image as cover");
+    }
 
-      setIsSubmitting(true);
-      try {
-        const result = await updatePost({
-          id: postId,
-          ...formData,
-          visibility: isDraft ? "PRIVATE" : visibility, // ← visibility passed directly, not from stale state
-          isDraft,
-          images: files.map((f) => ({
-            url: f.isUploaded ? f.s3Url || f.preview : f.preview,
-            description: f.description,
-            isCover: f.isCover,
-            existingImageId: f.existingImageId,
-          })),
+    setIsSubmitting(true);
+    try {
+      const result = await updatePost({
+        id: postId,
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        tags: formData.tags,
+        visibility: formData.isDraft ? "PRIVATE" : formData.visibility, // draft always private
+        isDraft: formData.isDraft,
+        images: files.map((f) => ({
+          url: f.isUploaded ? f.s3Url || f.preview : f.preview,
+          description: f.description,
+          isCover: f.isCover,
+          existingImageId: f.existingImageId,
+        })),
+      });
+      if (result.success) {
+        setIsSubmitting(false);
+        setIsRedirecting(true);
+        toast.success(formData.isDraft ? "Saved as draft" : "Post saved!");
+        files.forEach((f) => {
+          if (f.preview.startsWith("blob:")) URL.revokeObjectURL(f.preview);
         });
-        if (result.success) {
-          setIsSubmitting(false);
-          setIsRedirecting(true);
-          toast.success(isDraft ? "Saved as draft" : "Post saved!");
-          files.forEach((f) => {
-            if (f.preview.startsWith("blob:")) URL.revokeObjectURL(f.preview);
-          });
-          setTimeout(() => router.push(`/posts/${postId}`), 200);
-        } else {
-          setIsSubmitting(false);
-          setIsRedirecting(false);
-          toast.error(result.message || "Failed to save");
-        }
-      } catch (e: any) {
-        toast.error(e.message || "Failed to save");
-      } finally {
+        setTimeout(() => router.push(`/posts/${postId}`), 200);
+      } else {
         setIsSubmitting(false);
         setIsRedirecting(false);
+        toast.error(result.message || "Failed to save");
       }
-    },
-    [formData, files, postId, uploadFiles, router],
-  );
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save");
+    } finally {
+      setIsSubmitting(false);
+      setIsRedirecting(false);
+    }
+  }, [formData, files, postId, uploadFiles, router]);
 
   /* ── delete ── */
   const handleDelete = useCallback(async () => {
@@ -830,42 +792,7 @@ const EditPostForm = () => {
             {/* Left column (2/3) */}
             <div className="lg:col-span-2 space-y-4">
               {/* Stats bar */}
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-6 py-4">
-                <div className="grid grid-cols-4 divide-x divide-gray-100">
-                  {[
-                    { v: stats.total, label: "Files", color: "text-gray-900" },
-                    {
-                      v: stats.uploaded,
-                      label: "Uploaded",
-                      color: "text-green-600",
-                    },
-                    {
-                      v: stats.images,
-                      label: "Images",
-                      color: "text-indigo-600",
-                    },
-                    {
-                      v: stats.videos,
-                      label: "Videos",
-                      color: "text-purple-600",
-                    },
-                  ].map(({ v, label, color }) => (
-                    <div
-                      key={label}
-                      className="text-center px-4 first:pl-0 last:pr-0"
-                    >
-                      <p
-                        className={`text-xl font-extrabold tabular-nums ${color}`}
-                      >
-                        {v}
-                      </p>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">
-                        {label}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <StatsBar {...stats} />
 
               {/* Tab bar */}
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-1.5 flex gap-1">
@@ -1561,331 +1488,66 @@ const EditPostForm = () => {
 
             {/* Right column (1/3) */}
             <div className="space-y-4">
-              {/* Current status badge */}
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
-                <div className="flex flex-col items-start justify-center gap-2">
-                  <span className="text-sm font-extrabold text-gray-900 uppercase tracking-wider">
-                    Visibility
-                  </span>
-                  <div className="flex items-center justify-center gap-2">
-                    <VisibilityBadge visibility={post.visibility} />
-
-                    {post.isDraft && (
-                      <span className="bg-yellow-50 text-yellow-600 border-yellow-100 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider">
-                        <Edit2 size={10} /> Draft
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-gray-400">
-                    {post.isDraft
-                      ? "This post is a draft. Only you can see it."
-                      : post.visibility === "PUBLIC"
-                        ? "Visible to everyone."
-                        : post.visibility === "FOLLOWERS"
-                          ? "Visible to your followers."
-                          : "Visible only to you."}
-                  </p>
-                </div>
-              </div>
-
-              {/* Publish as */}
-              {/* Publish as */}
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                {/* Header */}
-                <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-                  <Zap size={13} className="text-indigo-500" />
-                  <span className="text-xs font-extrabold text-gray-900 uppercase tracking-wider">
-                    Save & Publish
-                  </span>
-                </div>
-
-                <div className="p-3 space-y-2">
-                  {[
-                    {
-                      vis: "PUBLIC" as Visibility,
-                      label: "Public",
-                      icon: Globe,
-                      desc: "Anyone can see this",
-                      iconColor: "text-emerald-600",
-                      iconBg: "bg-emerald-50 group-hover:bg-emerald-100",
-                      border: "border-emerald-200 hover:border-emerald-400",
-                      bg: "hover:bg-emerald-50",
-                      labelColor: "text-emerald-700",
-                    },
-                    {
-                      vis: "FOLLOWERS" as Visibility,
-                      label: "Followers Only",
-                      icon: Users,
-                      desc: "Only your followers",
-                      iconColor: "text-indigo-600",
-                      iconBg: "bg-indigo-50 group-hover:bg-indigo-100",
-                      border: "border-indigo-200 hover:border-indigo-400",
-                      bg: "hover:bg-indigo-50",
-                      labelColor: "text-indigo-700",
-                    },
-                    {
-                      vis: "PRIVATE" as Visibility,
-                      label: "Private",
-                      icon: Lock,
-                      desc: "Only you can see this",
-                      iconColor: "text-gray-500",
-                      iconBg: "bg-gray-100 group-hover:bg-gray-200",
-                      border: "border-gray-200 hover:border-gray-400",
-                      bg: "hover:bg-gray-50",
-                      labelColor: "text-gray-700",
-                    },
-                  ].map(
-                    ({
-                      vis,
-                      label,
-                      icon: Icon,
-                      desc,
-                      iconColor,
-                      iconBg,
-                      border,
-                      bg,
-                      labelColor,
-                    }) => (
-                      <button
-                        key={vis}
-                        onClick={() =>
-                          handleSubmit({ isDraft: false, visibility: vis })
-                        }
-                        disabled={isSubmitting}
-                        className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border ${border} ${bg} bg-white active:scale-[0.98] transition-all disabled:opacity-50 text-left group shadow-sm`}
-                      >
-                        <div
-                          className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0 transition-colors`}
-                        >
-                          <Icon size={13} className={iconColor} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className={`text-sm font-semibold ${labelColor} leading-none mb-0.5`}
-                          >
-                            {label}
-                          </p>
-                          <p className="text-[11px] text-gray-400">{desc}</p>
-                        </div>
-                        {isSubmitting ? (
-                          <Loader2
-                            size={12}
-                            className="animate-spin text-gray-300 flex-shrink-0"
-                          />
-                        ) : (
-                          <ChevronRight
-                            size={13}
-                            className="text-gray-300 group-hover:text-gray-500 flex-shrink-0 transition-colors"
-                          />
-                        )}
-                      </button>
-                    ),
-                  )}
-
-                  {/* Divider */}
-                  <div className="relative py-1">
-                    <div className="absolute inset-0 flex items-center px-1">
-                      <div className="w-full border-t border-dashed border-gray-200" />
-                    </div>
-                    <div className="relative flex justify-center">
-                      <span className="bg-white px-2 text-[10px] font-bold text-gray-300 uppercase tracking-widest">
-                        or
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Save as draft */}
-                  <button
-                    onClick={() =>
-                      handleSubmit({ isDraft: true, visibility: "PRIVATE" })
-                    }
-                    disabled={isSubmitting}
-                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl border border-amber-200 hover:border-amber-400 bg-white hover:bg-amber-50 active:scale-[0.98] transition-all disabled:opacity-50 text-left group shadow-sm"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center flex-shrink-0 transition-colors">
-                      <FileText size={13} className="text-amber-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-amber-700 leading-none mb-0.5">
-                        Save as Draft
-                      </p>
-                      <p className="text-[11px] text-gray-400">
-                        Hidden until published
-                      </p>
-                    </div>
-                    {isSubmitting ? (
-                      <Loader2
-                        size={12}
-                        className="animate-spin text-amber-300 flex-shrink-0"
-                      />
+              {/* Visibility */}
+              <VisibilityPanel
+                visibility={formData.visibility}
+                isDraft={formData.isDraft}
+                isSubmitting={isSubmitting}
+                currVisibility={post.visibility}
+                postIsDraft={post.isDraft}
+                onChange={(vis, draft) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    visibility: vis,
+                    isDraft: draft,
+                  }))
+                }
+              />
+              <div className="space-y-3">
+                {/* Save */}
+                <Button
+                  onClick={handleSubmit}
+                  variant="primary"
+                  className="w-full rounded-xl shadow-sm shadow-indigo-200"
+                  disabled={isSubmitting}
+                  icon={
+                    isSubmitting ? (
+                      <Loader2 size={14} className="animate-spin" />
                     ) : (
-                      <ChevronRight
-                        size={13}
-                        className="text-gray-300 group-hover:text-amber-400 flex-shrink-0 transition-colors"
-                      />
-                    )}
-                  </button>
-                </div>
+                      <Save size={14} />
+                    )
+                  }
+                >
+                  {isSubmitting ? "Saving…" : "Save Changes"}
+                </Button>
+                {/* Delete */}
+                <button
+                  onClick={() => setIsDeleteModalOpen(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-red-200 text-red-500 text-sm font-semibold hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all"
+                >
+                  <Trash2 size={14} /> Delete Post
+                </button>
               </div>
-
-              {/* Tips */}
-              <div className="bg-indigo-50 rounded-2xl border border-indigo-100 p-4 space-y-2">
-                <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
-                  Tips
-                </p>
-                <ul className="space-y-1.5">
-                  {[
-                    "Add captions to each media file",
-                    "Use relevant tags for discoverability",
-                    "Drafts are always private until published",
-                  ].map((tip) => (
-                    <li
-                      key={tip}
-                      className="flex items-start gap-1.5 text-xs text-indigo-600"
-                    >
-                      <span className="mt-1 w-1 h-1 rounded-full bg-indigo-400 flex-shrink-0" />
-                      {tip}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Delete */}
-              <button
-                onClick={() => setIsDeleteModalOpen(true)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-red-200 text-red-500 text-sm font-semibold hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all"
-              >
-                <Trash2 size={14} /> Delete This Post
-              </button>
             </div>
           </div>
         </div>
       </div>
 
       {/* Delete modal  */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl max-w-sm w-full mx-auto overflow-hidden">
-            <div className="p-6 space-y-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
-                  <AlertCircle size={18} className="text-red-500" />
-                </div>
-                <div>
-                  <p className="text-base font-extrabold text-gray-900">
-                    Delete Post
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    This action cannot be undone
-                  </p>
-                </div>
-              </div>
+      <DeleteModal
+        label="Post"
+        isOpen={isDeleteModalOpen}
+        isDeleting={isDeleting}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDelete}
+      />
 
-              <div className="bg-red-50 border border-red-100 rounded-xl p-4 space-y-2">
-                <p className="text-sm font-semibold text-red-700">
-                  Are you sure you want to delete this post?
-                </p>
-                <ul className="space-y-1">
-                  {[
-                    "All images, comments, and likes will be removed",
-                    "This is permanent and irreversible",
-                  ].map((item) => (
-                    <li
-                      key={item}
-                      className="flex items-start gap-1.5 text-xs text-red-500"
-                    >
-                      <span className="mt-1 w-1 h-1 rounded-full bg-red-400 flex-shrink-0" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => setIsDeleteModalOpen(false)}
-                  variant="outline"
-                  className="flex-1 rounded-xl"
-                >
-                  Cancel
-                </Button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60"
-                >
-                  {isDeleting ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin" /> Deleting…
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 size={13} /> Delete Post
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {previewFile && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          onClick={() => setPreviewFile(null)}
-        >
-          <div
-            className="relative max-w-4xl w-full max-h-[90vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-1 pb-3">
-              <p className="text-xs font-medium text-white/60 truncate pr-4">
-                {previewFile.name}
-              </p>
-              <button
-                onClick={() => setPreviewFile(null)}
-                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all flex-shrink-0"
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            {/* Media */}
-            <div className="rounded-2xl overflow-hidden bg-black flex items-center justify-center min-h-[200px]">
-              {previewError ? (
-                <div className="p-10 text-center space-y-3">
-                  <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mx-auto">
-                    <ImageIcon size={22} className="text-white/40" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-white/70">
-                      Failed to load preview
-                    </p>
-                  </div>
-                </div>
-              ) : previewFile.type === "image" ? (
-                <img
-                  src={previewFile.src}
-                  alt={previewFile.name}
-                  onError={() => setPreviewError(true)}
-                  className="max-h-[80vh] w-auto object-contain"
-                />
-              ) : (
-                <video
-                  src={previewFile.src}
-                  controls
-                  autoPlay
-                  onError={() => setPreviewError(true)}
-                  className="max-h-[80vh] w-full"
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <MediaPreviewModal
+        file={previewFile}
+        hasError={previewError}
+        onClose={() => setPreviewFile(null)}
+        onRetry={() => setPreviewError(false)}
+      />
     </div>
   );
 };

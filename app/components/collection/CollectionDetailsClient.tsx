@@ -189,11 +189,11 @@ const CollectionDetailsClient = ({
             <ImageIcon className="w-10 h-10 text-gray-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold">This collection is empty</h3>
             <p className="text-gray-600 mb-6">
-              Start adding snippets to your collection to see them here.
+              Start exploring and add some snippets to this collection.
             </p>
-            <Link href={`/collections/${collection.id}/new`} >       
+            <Link href={`/explore/posts`} >       
             <Button variant="primary" size="md">
-              <Plus className="w-4 h-4 mr-1" /> Create Snippet
+              <Plus className="w-4 h-4 mr-1" /> Explore Snippets
             </Button>
             </Link>
           </div>
